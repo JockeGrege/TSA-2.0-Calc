@@ -448,6 +448,9 @@ function renderProfiles() {
         <button class="btn-icon" style="width:32px;height:32px;flex:none;" onclick="event.stopPropagation();openRenameProfileModal('${p.id}')" title="Rename">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
         </button>
+        <button class="btn-icon" style="width:32px;height:32px;flex:none;" onclick="event.stopPropagation();resetProfileHandler('${p.id}')" title="Reset to Default">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 2.64-6.36"/><path d="M3 4v5h5"/></svg>
+        </button>
         <button class="btn-icon" style="width:32px;height:32px;flex:none;" onclick="event.stopPropagation();deleteProfileHandler('${p.id}')" title="Delete">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
         </button>
@@ -457,6 +460,7 @@ function renderProfiles() {
   html += `</div>`;
   html += `
     <button class="btn btn-primary btn-block mt-4" onclick="openNewProfileModal()">+ New Profile</button>
+    <button class="btn btn-secondary btn-block mt-2" onclick="openDuplicateProfileModal()">Duplicate Current Profile</button>
     <button class="btn btn-secondary btn-block mt-2" onclick="signOutHandler()">Sign Out</button>
   `;
   mainEl.innerHTML = html;
@@ -506,24 +510,30 @@ function updateRounding(val) {
   saveState();
 }
 
-function resetAllData() {
-  if (confirm('Reset all maxes, logs, and custom exercises? This cannot be undone.')) {
-    localStorage.removeItem(STORAGE_KEY);
-    state.maxes = {
+function defaultProfileData() {
+  return {
+    maxes: {
       squat: { weight: '', reps: '', rpe: '', e1rm: null },
       bench: { weight: '', reps: '', rpe: '', e1rm: null },
       deadlift: { weight: '', reps: '', rpe: '', e1rm: null }
-    };
-    state.rounding = 2.5;
-    state.customExercises = {};
-    state.logs = {};
+    },
+    rounding: 2.5,
+    customExercises: {},
+    logs: {}
+  };
+}
+
+function resetAllData() {
+  if (confirm('Reset all maxes, logs, and custom exercises? This cannot be undone.')) {
+    localStorage.removeItem(STORAGE_KEY);
+    const defaults = defaultProfileData();
+    state.maxes = defaults.maxes;
+    state.rounding = defaults.rounding;
+    state.customExercises = defaults.customExercises;
+    state.logs = defaults.logs;
     if (state.user && state.profileId) {
-      window.Firebase.saveProfileData(state.user.uid, state.profileId, {
-        maxes: state.maxes,
-        rounding: state.rounding,
-        customExercises: state.customExercises,
-        logs: state.logs
-      }).catch((e) => console.warn('Cloud reset failed', e));
+      window.Firebase.saveProfileData(state.user.uid, state.profileId, defaults)
+        .catch((e) => console.warn('Cloud reset failed', e));
     }
     showToast('All data reset');
     render();
@@ -649,11 +659,58 @@ function openRenameProfileModal(profileId) {
   document.getElementById('modal-overlay').classList.remove('hidden');
 }
 
+function openDuplicateProfileModal() {
+  const current = state.profiles.find((p) => p.id === state.profileId);
+  state.editing = { mode: 'duplicate-profile' };
+  document.getElementById('modal-title').textContent = 'Duplicate Profile';
+  document.getElementById('modal-body').innerHTML = `
+    <div class="form-group">
+      <label>Name</label>
+      <input type="text" id="profile-name" value="${current ? current.name + ' (copy)' : ''}" />
+    </div>
+  `;
+  document.getElementById('modal-overlay').classList.remove('hidden');
+}
+
 async function createProfileHandler(name) {
   const uid = state.user.uid;
   await window.Firebase.createProfile(uid, name, {});
   state.profiles = await window.Firebase.listProfiles(uid);
   showToast('Profile created');
+  render();
+}
+
+async function duplicateProfileHandler(name) {
+  const uid = state.user.uid;
+  const seed = {
+    maxes: state.maxes,
+    rounding: state.rounding,
+    customExercises: state.customExercises,
+    logs: state.logs
+  };
+  await window.Firebase.createProfile(uid, name, seed);
+  state.profiles = await window.Firebase.listProfiles(uid);
+  showToast('Profile duplicated');
+  render();
+}
+
+async function resetProfileHandler(profileId) {
+  const p = state.profiles.find((x) => x.id === profileId);
+  if (!p) return;
+  if (!confirm(`Reset "${p.name}" to default? This clears its maxes, logs, and custom exercises. This cannot be undone.`)) return;
+
+  const uid = state.user.uid;
+  const defaults = defaultProfileData();
+  await window.Firebase.saveProfileData(uid, profileId, defaults);
+
+  if (profileId === state.profileId) {
+    state.maxes = defaults.maxes;
+    state.rounding = defaults.rounding;
+    state.customExercises = defaults.customExercises;
+    state.logs = defaults.logs;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(defaults));
+  }
+  showToast('Profile reset to default');
   render();
 }
 
@@ -811,7 +868,7 @@ function closeModal() {
 function saveModal() {
   if (!state.editing) return;
 
-  if (state.editing.mode === 'new-profile' || state.editing.mode === 'rename-profile') {
+  if (state.editing.mode === 'new-profile' || state.editing.mode === 'rename-profile' || state.editing.mode === 'duplicate-profile') {
     const profileName = document.getElementById('profile-name').value.trim();
     if (!profileName) {
       showToast('Name is required');
@@ -819,8 +876,10 @@ function saveModal() {
     }
     if (state.editing.mode === 'new-profile') {
       createProfileHandler(profileName);
-    } else {
+    } else if (state.editing.mode === 'rename-profile') {
       renameProfileHandler(state.editing.profileId, profileName);
+    } else {
+      duplicateProfileHandler(profileName);
     }
     closeModal();
     return;
