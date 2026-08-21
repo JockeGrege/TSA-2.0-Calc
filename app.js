@@ -19,7 +19,7 @@ let PROGRAM = null; // loaded from JSON
 
 // ========== STATE ==========
 const state = {
-  view: 'home', // home | setup | week | day
+  view: 'home', // home | setup | week | day | auth | profiles
   currentWeek: null,
   currentDayIdx: 0,
   maxes: {
@@ -32,11 +32,21 @@ const state = {
   // or full custom days stored
   customExercises: {}, // week -> dayIdx -> array of exercises (full override if present)
   logs: {}, // "week-dayIdx-exIdx" -> { weightUsed, repsDone, rpe }
-  editing: null // { week, dayIdx, exIdx } or 'add'
+  editing: null, // { week, dayIdx, exIdx } or 'add'
+
+  // Auth / cloud sync
+  user: null,
+  authReady: false,
+  authMode: 'login', // 'login' | 'signup'
+  authError: '',
+  profileId: null,
+  profiles: [], // [{ id, name }]
+  profileUnsubscribe: null
 };
 
 // ========== PERSISTENCE ==========
 const STORAGE_KEY = 'tsa9week_v1';
+let cloudSaveTimer = null;
 
 function saveState() {
   const toSave = {
@@ -46,20 +56,13 @@ function saveState() {
     logs: state.logs
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
-}
 
-function loadState() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const data = JSON.parse(raw);
-      if (data.maxes) state.maxes = data.maxes;
-      if (data.rounding) state.rounding = data.rounding;
-      if (data.customExercises) state.customExercises = data.customExercises;
-      if (data.logs) state.logs = data.logs;
-    }
-  } catch (e) {
-    console.warn('Failed to load state', e);
+  if (state.user && state.profileId) {
+    clearTimeout(cloudSaveTimer);
+    cloudSaveTimer = setTimeout(() => {
+      window.Firebase.saveProfileData(state.user.uid, state.profileId, toSave)
+        .catch((e) => console.warn('Cloud sync failed', e));
+    }, 600);
   }
 }
 
@@ -126,6 +129,7 @@ const mainEl = document.getElementById('main');
 const headerTitle = document.getElementById('header-title');
 const btnBack = document.getElementById('btn-back');
 const btnSetup = document.getElementById('btn-setup');
+const btnProfile = document.getElementById('btn-profile');
 const bottomNav = document.getElementById('bottom-nav');
 
 function showToast(msg, duration = 2000) {
@@ -136,11 +140,34 @@ function showToast(msg, duration = 2000) {
 }
 
 function render() {
+  if (!state.authReady) {
+    btnBack.classList.add('hidden');
+    btnSetup.classList.add('hidden');
+    btnProfile.classList.add('hidden');
+    bottomNav.classList.add('hidden');
+    headerTitle.textContent = 'TSA 9-Week';
+    mainEl.innerHTML = `<div class="empty-state"><p>Loading…</p></div>`;
+    return;
+  }
+
+  if (!state.user) state.view = 'auth';
+
   updateE1RMs();
-  btnBack.classList.toggle('hidden', state.view === 'home');
+  btnBack.classList.toggle('hidden', state.view === 'home' || state.view === 'auth');
+  btnSetup.classList.toggle('hidden', state.view === 'auth');
+  btnProfile.classList.toggle('hidden', state.view === 'auth');
   bottomNav.classList.add('hidden');
 
-  if (state.view === 'home') {
+  const activeProfile = state.profiles.find((p) => p.id === state.profileId);
+  btnProfile.title = activeProfile ? `Profiles (${activeProfile.name})` : 'Profiles';
+
+  if (state.view === 'auth') {
+    headerTitle.textContent = 'Sign In';
+    renderAuth();
+  } else if (state.view === 'profiles') {
+    headerTitle.textContent = 'Profiles';
+    renderProfiles();
+  } else if (state.view === 'home') {
     headerTitle.textContent = 'TSA 9-Week';
     renderHome();
   } else if (state.view === 'setup') {
@@ -384,6 +411,57 @@ function renderDay() {
   mainEl.innerHTML = html;
 }
 
+function renderAuth() {
+  const isSignup = state.authMode === 'signup';
+  let html = `
+    <div class="card">
+      <p class="note" style="margin-bottom:16px;">${isSignup ? 'Create an account to sync your data across devices.' : 'Sign in to sync your training data across devices.'}</p>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="auth-email" inputmode="email" autocomplete="email" />
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="auth-password" autocomplete="${isSignup ? 'new-password' : 'current-password'}" />
+      </div>
+      ${state.authError ? `<p class="note" style="color:var(--danger);margin-bottom:12px;">${state.authError}</p>` : ''}
+      <button class="btn btn-primary btn-block" onclick="submitAuth()">${isSignup ? 'Create Account' : 'Sign In'}</button>
+      <button class="btn btn-secondary btn-block mt-2" onclick="handleGoogleSignIn()">Sign in with Google</button>
+      <p class="note" style="text-align:center;margin-top:16px;">
+        ${isSignup ? 'Already have an account?' : "Don't have an account?"}
+        <a href="#" onclick="toggleAuthMode();return false;">${isSignup ? 'Sign In' : 'Create one'}</a>
+      </p>
+    </div>
+  `;
+  mainEl.innerHTML = html;
+}
+
+function renderProfiles() {
+  let html = `<div class="week-list">`;
+  state.profiles.forEach((p) => {
+    const active = p.id === state.profileId;
+    html += `
+      <div class="week-item" onclick="switchProfile('${p.id}')" style="${active ? 'border-color:var(--accent);' : ''}">
+        <div class="week-info">
+          <h3>${p.name}${active ? ' (active)' : ''}</h3>
+        </div>
+        <button class="btn-icon" style="width:32px;height:32px;flex:none;" onclick="event.stopPropagation();openRenameProfileModal('${p.id}')" title="Rename">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </button>
+        <button class="btn-icon" style="width:32px;height:32px;flex:none;" onclick="event.stopPropagation();deleteProfileHandler('${p.id}')" title="Delete">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+        </button>
+      </div>
+    `;
+  });
+  html += `</div>`;
+  html += `
+    <button class="btn btn-primary btn-block mt-4" onclick="openNewProfileModal()">+ New Profile</button>
+    <button class="btn btn-secondary btn-block mt-2" onclick="signOutHandler()">Sign Out</button>
+  `;
+  mainEl.innerHTML = html;
+}
+
 // ========== NAVIGATION ==========
 function goHome() {
   state.view = 'home';
@@ -404,6 +482,11 @@ function goWeek(week) {
 function goDay(dayIdx) {
   state.currentDayIdx = dayIdx;
   state.view = 'day';
+  render();
+}
+
+function goProfiles() {
+  state.view = 'profiles';
   render();
 }
 
@@ -434,9 +517,169 @@ function resetAllData() {
     state.rounding = 2.5;
     state.customExercises = {};
     state.logs = {};
+    if (state.user && state.profileId) {
+      window.Firebase.saveProfileData(state.user.uid, state.profileId, {
+        maxes: state.maxes,
+        rounding: state.rounding,
+        customExercises: state.customExercises,
+        logs: state.logs
+      }).catch((e) => console.warn('Cloud reset failed', e));
+    }
     showToast('All data reset');
     render();
   }
+}
+
+// ========== AUTH ==========
+function toggleAuthMode() {
+  state.authMode = state.authMode === 'login' ? 'signup' : 'login';
+  state.authError = '';
+  render();
+}
+
+function friendlyAuthError(e) {
+  const code = (e && e.code) || '';
+  if (code.includes('wrong-password') || code.includes('invalid-credential')) return 'Incorrect email or password.';
+  if (code.includes('email-already-in-use')) return 'An account with that email already exists.';
+  if (code.includes('weak-password')) return 'Password should be at least 6 characters.';
+  if (code.includes('user-not-found')) return 'No account found with that email.';
+  return 'Something went wrong. Please try again.';
+}
+
+async function submitAuth() {
+  const email = document.getElementById('auth-email').value.trim();
+  const password = document.getElementById('auth-password').value;
+  if (!email || !password) {
+    state.authError = 'Email and password are required.';
+    render();
+    return;
+  }
+  try {
+    if (state.authMode === 'signup') {
+      await window.Firebase.signUpEmail(email, password);
+    } else {
+      await window.Firebase.signInEmail(email, password);
+    }
+  } catch (e) {
+    state.authError = friendlyAuthError(e);
+    render();
+  }
+}
+
+async function handleGoogleSignIn() {
+  try {
+    await window.Firebase.signInGoogle();
+  } catch (e) {
+    state.authError = friendlyAuthError(e);
+    render();
+  }
+}
+
+async function signOutHandler() {
+  if (state.profileUnsubscribe) {
+    state.profileUnsubscribe();
+    state.profileUnsubscribe = null;
+  }
+  await window.Firebase.signOutUser();
+}
+
+// ========== PROFILES ==========
+async function applyProfileData(profileId) {
+  const data = await window.Firebase.loadProfileData(state.user.uid, profileId);
+  if (data) {
+    if (data.maxes) state.maxes = data.maxes;
+    if (data.rounding) state.rounding = data.rounding;
+    if (data.customExercises) state.customExercises = data.customExercises;
+    if (data.logs) state.logs = data.logs;
+  }
+}
+
+function subscribeToProfile(profileId) {
+  if (state.profileUnsubscribe) state.profileUnsubscribe();
+  state.profileUnsubscribe = window.Firebase.watchCurrentProfile(state.user.uid, profileId, (data) => {
+    const active = document.activeElement;
+    const isEditingInput = active && mainEl.contains(active) && (active.tagName === 'INPUT' || active.tagName === 'SELECT');
+    if (data.maxes) state.maxes = data.maxes;
+    if (data.rounding) state.rounding = data.rounding;
+    if (data.customExercises) state.customExercises = data.customExercises;
+    if (data.logs) state.logs = data.logs;
+    if (!isEditingInput) render();
+  });
+}
+
+async function switchProfile(profileId) {
+  if (profileId === state.profileId) {
+    state.view = 'home';
+    render();
+    return;
+  }
+  const uid = state.user.uid;
+  await window.Firebase.setCurrentProfileId(uid, profileId);
+  state.profileId = profileId;
+  await applyProfileData(profileId);
+  subscribeToProfile(profileId);
+  state.view = 'home';
+  render();
+  showToast('Switched profile');
+}
+
+function openNewProfileModal() {
+  state.editing = { mode: 'new-profile' };
+  document.getElementById('modal-title').textContent = 'New Profile';
+  document.getElementById('modal-body').innerHTML = `
+    <div class="form-group">
+      <label>Name</label>
+      <input type="text" id="profile-name" placeholder="e.g. Block B - higher reps" />
+    </div>
+  `;
+  document.getElementById('modal-overlay').classList.remove('hidden');
+}
+
+function openRenameProfileModal(profileId) {
+  const p = state.profiles.find((x) => x.id === profileId);
+  if (!p) return;
+  state.editing = { mode: 'rename-profile', profileId };
+  document.getElementById('modal-title').textContent = 'Rename Profile';
+  document.getElementById('modal-body').innerHTML = `
+    <div class="form-group">
+      <label>Name</label>
+      <input type="text" id="profile-name" value="${p.name}" />
+    </div>
+  `;
+  document.getElementById('modal-overlay').classList.remove('hidden');
+}
+
+async function createProfileHandler(name) {
+  const uid = state.user.uid;
+  await window.Firebase.createProfile(uid, name, {});
+  state.profiles = await window.Firebase.listProfiles(uid);
+  showToast('Profile created');
+  render();
+}
+
+async function renameProfileHandler(profileId, name) {
+  const uid = state.user.uid;
+  await window.Firebase.renameProfile(uid, profileId, name);
+  state.profiles = await window.Firebase.listProfiles(uid);
+  showToast('Profile renamed');
+  render();
+}
+
+async function deleteProfileHandler(profileId) {
+  if (state.profiles.length <= 1) {
+    showToast("Can't delete your only profile");
+    return;
+  }
+  if (!confirm('Delete this profile? This cannot be undone.')) return;
+  const uid = state.user.uid;
+  await window.Firebase.deleteProfile(uid, profileId);
+  state.profiles = await window.Firebase.listProfiles(uid);
+  if (state.profileId === profileId) {
+    await switchProfile(state.profiles[0].id);
+  } else {
+    render();
+  }
+  showToast('Profile deleted');
 }
 
 // ========== LOGGING ==========
@@ -567,6 +810,22 @@ function closeModal() {
 
 function saveModal() {
   if (!state.editing) return;
+
+  if (state.editing.mode === 'new-profile' || state.editing.mode === 'rename-profile') {
+    const profileName = document.getElementById('profile-name').value.trim();
+    if (!profileName) {
+      showToast('Name is required');
+      return;
+    }
+    if (state.editing.mode === 'new-profile') {
+      createProfileHandler(profileName);
+    } else {
+      renameProfileHandler(state.editing.profileId, profileName);
+    }
+    closeModal();
+    return;
+  }
+
   const { week, dayIdx, exIdx, mode } = state.editing;
 
   const name = document.getElementById('edit-name').value.trim();
@@ -643,13 +902,14 @@ function resetDayCustom(week, dayIdx) {
 document.getElementById('btn-back').addEventListener('click', () => {
   if (state.view === 'day') {
     state.view = 'week';
-  } else if (state.view === 'week' || state.view === 'setup') {
+  } else if (state.view === 'week' || state.view === 'setup' || state.view === 'profiles') {
     state.view = 'home';
   }
   render();
 });
 
 document.getElementById('btn-setup').addEventListener('click', goSetup);
+document.getElementById('btn-profile').addEventListener('click', goProfiles);
 
 document.getElementById('modal-close').addEventListener('click', closeModal);
 document.getElementById('modal-cancel').addEventListener('click', closeModal);
@@ -660,8 +920,35 @@ document.getElementById('modal-overlay').addEventListener('click', (e) => {
 });
 
 // ========== INIT ==========
+function waitForFirebase() {
+  if (window.__firebaseReady) return Promise.resolve();
+  return new Promise((resolve) => {
+    window.addEventListener('firebase-ready', () => resolve(), { once: true });
+  });
+}
+
+async function loadUserProfileContext(uid) {
+  await window.Firebase.ensureUserDoc(uid, state.user.email);
+  let profileId = await window.Firebase.getCurrentProfileId(uid);
+
+  if (!profileId) {
+    profileId = await window.Firebase.importLegacyLocalStorageIfNeeded(uid);
+  }
+  if (!profileId) {
+    const existing = await window.Firebase.listProfiles(uid);
+    profileId = existing[0]?.id || null;
+  }
+
+  state.profileId = profileId;
+  if (profileId) {
+    await applyProfileData(profileId);
+    subscribeToProfile(profileId);
+  }
+  state.profiles = await window.Firebase.listProfiles(uid);
+  if (state.view === 'auth') state.view = 'home';
+}
+
 async function init() {
-  loadState();
   try {
     const res = await fetch('program_data.json');
     PROGRAM = await res.json();
@@ -670,7 +957,27 @@ async function init() {
     mainEl.innerHTML = `<div class="empty-state"><p>Failed to load program data.</p></div>`;
     return;
   }
+
   render();
+  await waitForFirebase();
+  window.Firebase.onAuthChange(async (user) => {
+    state.user = user;
+    state.authReady = true;
+    state.authError = '';
+
+    if (user) {
+      await loadUserProfileContext(user.uid);
+    } else {
+      if (state.profileUnsubscribe) {
+        state.profileUnsubscribe();
+        state.profileUnsubscribe = null;
+      }
+      state.profileId = null;
+      state.profiles = [];
+      state.view = 'auth';
+    }
+    render();
+  });
 }
 
 init();
