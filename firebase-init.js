@@ -35,7 +35,14 @@ const DEFAULT_PROFILE_DATA = {
   },
   rounding: 2.5,
   customExercises: {},
-  logs: {}
+  logs: {},
+  plateSettings: {
+    barbellKg: 20,
+    barbellLb: 45,
+    collars: false,
+    platesKg: Object.fromEntries([25, 20, 15, 10, 5, 2.5, 1.25].map((d) => [d, { count: 0, unlimited: true }])),
+    platesLb: Object.fromEntries([45, 35, 25, 10, 5, 2.5].map((d) => [d, { count: 0, unlimited: true }]))
+  }
 };
 
 function userDocRef(uid) {
