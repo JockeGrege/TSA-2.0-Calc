@@ -274,7 +274,7 @@ function renderHome() {
   html += `
     <p class="note" style="margin-top:24px;text-align:center;">
       Program by The Strength Athlete (Bryce Lewis)<br>
-      Rebuilt as web MVP · Data stays on your device
+      Rebuilt as web MVP · Synced to your account
     </p>
   `;
 
