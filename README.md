@@ -43,6 +43,9 @@ Most modern browsers allow opening `index.html` directly, but `fetch` for the JS
 ## Firebase setup (for developers)
 This app expects a Firebase project with Authentication (Email/Password + Google) and Firestore enabled. See `firebase-config.js` for where to put your project's config, and `firestore.rules` for the security rules. Deploy rules with `firebase deploy --only firestore:rules` (requires `firebase-tools`, e.g. `npm install --no-save firebase-tools`).
 
+## Offline app shell
+`sw.js` caches the app shell (HTML/CSS/JS + the Firebase SDK) so a cold start works with no connection. There's no build step to hash filenames automatically, so bump `CACHE_VERSION` in `sw.js` by hand whenever any cached file changes — otherwise visitors keep getting the stale cached version.
+
 ## Credits
 - Original program: **The Strength Athlete** (Bryce Lewis) – https://www.thestrengthathlete.com
 - Spreadsheet source: LiftVault.com

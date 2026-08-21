@@ -78,7 +78,8 @@ const state = {
   authError: '',
   profileId: null,
   profiles: [], // [{ id, name }]
-  profileUnsubscribe: null
+  profileUnsubscribe: null,
+  syncStatus: 'synced' // 'synced' | 'syncing' | 'offline' | 'error'
 };
 
 // ========== PERSISTENCE ==========
@@ -95,13 +96,35 @@ function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
 
   if (state.user && state.profileId) {
+    setSyncStatus('syncing');
     clearTimeout(cloudSaveTimer);
     cloudSaveTimer = setTimeout(() => {
       window.Firebase.saveProfileData(state.user.uid, state.profileId, toSave)
-        .catch((e) => console.warn('Cloud sync failed', e));
+        .then(() => setSyncStatus('synced'))
+        .catch((e) => {
+          console.warn('Cloud sync failed', e);
+          setSyncStatus(navigator.onLine ? 'error' : 'offline');
+        });
     }, 600);
   }
 }
+
+const syncIndicator = document.getElementById('sync-indicator');
+
+function setSyncStatus(status) {
+  state.syncStatus = status;
+  syncIndicator.className = 'sync-dot ' + status;
+  syncIndicator.classList.toggle('hidden', state.view === 'auth' || (status === 'synced' && navigator.onLine));
+  syncIndicator.title = {
+    syncing: 'Syncing…',
+    synced: 'All changes synced',
+    offline: 'Offline — changes saved locally, will sync when back online',
+    error: 'Sync error — changes saved locally'
+  }[status];
+}
+
+window.addEventListener('online', () => setSyncStatus(state.syncStatus === 'offline' ? 'synced' : state.syncStatus));
+window.addEventListener('offline', () => setSyncStatus('offline'));
 
 // ========== CALCULATIONS ==========
 function estimate1RM(weight, reps, rpe) {
@@ -181,6 +204,7 @@ function render() {
     btnBack.classList.add('hidden');
     btnSetup.classList.add('hidden');
     btnProfile.classList.add('hidden');
+    syncIndicator.classList.add('hidden');
     bottomNav.classList.add('hidden');
     headerTitle.textContent = 'TSA 9-Week';
     mainEl.innerHTML = `<div class="empty-state"><p>Loading…</p></div>`;
@@ -193,6 +217,7 @@ function render() {
   btnBack.classList.toggle('hidden', state.view === 'home' || state.view === 'auth');
   btnSetup.classList.toggle('hidden', state.view === 'auth');
   btnProfile.classList.toggle('hidden', state.view === 'auth');
+  setSyncStatus(state.syncStatus);
   bottomNav.classList.add('hidden');
 
   const activeProfile = state.profiles.find((p) => p.id === state.profileId);
@@ -1170,3 +1195,9 @@ async function init() {
 }
 
 init();
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch((e) => console.warn('Service worker registration failed', e));
+  });
+}
