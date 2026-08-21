@@ -17,6 +17,40 @@ const RPE_CHART = {
 
 let PROGRAM = null; // loaded from JSON
 
+const WARMUP_SCHEMES = {
+  slow: {
+    label: 'Slow',
+    steps: [
+      { percentLabel: '50',    percent: 0.50,   reps: '8', rest: '2 minutes' },
+      { percentLabel: '60',    percent: 0.60,   reps: '5', rest: '2 minutes' },
+      { percentLabel: '70',    percent: 0.70,   reps: '3', rest: '2 minutes' },
+      { percentLabel: '80',    percent: 0.80,   reps: '2', rest: '2 minutes' },
+      { percentLabel: '85',    percent: 0.85,   reps: '1', rest: '3 minutes' },
+      { percentLabel: '90',    percent: 0.90,   reps: '1', rest: '3 minutes' },
+      { percentLabel: '95',    percent: 0.95,   reps: '1', rest: '5 minutes' }
+    ]
+  },
+  medium: {
+    label: 'Medium',
+    steps: [
+      { percentLabel: '50', percent: 0.50, reps: '5', rest: '2 minutes' },
+      { percentLabel: '65', percent: 0.65, reps: '5', rest: '2 minutes' },
+      { percentLabel: '78', percent: 0.78, reps: '3', rest: '2 minutes' },
+      { percentLabel: '88', percent: 0.88, reps: '2', rest: '3 minutes' },
+      { percentLabel: '96', percent: 0.96, reps: '1', rest: '3 minutes' }
+    ]
+  },
+  fast: {
+    label: 'Fast',
+    steps: [
+      { percentLabel: '52.94', percent: 0.5294, reps: '10', rest: '2 minutes' },
+      { percentLabel: '70.58', percent: 0.7058, reps: '8',  rest: '2 minutes' },
+      { percentLabel: '82.35', percent: 0.8235, reps: '5',  rest: '2 minutes' },
+      { percentLabel: '91.17', percent: 0.9117, reps: '3',  rest: '3 minutes' }
+    ]
+  }
+};
+
 // ========== STATE ==========
 const state = {
   view: 'home', // home | setup | week | day | auth | profiles
@@ -33,6 +67,9 @@ const state = {
   customExercises: {}, // week -> dayIdx -> array of exercises (full override if present)
   logs: {}, // "week-dayIdx-exIdx" -> { weightUsed, repsDone, rpe }
   editing: null, // { week, dayIdx, exIdx } or 'add'
+
+  // Warmup calculator (session-only; never saved or synced)
+  warmups: {}, // "week-dayIdx-exIdx" -> { scheme, targetWeight, expanded }
 
   // Auth / cloud sync
   user: null,
@@ -377,6 +414,7 @@ function renderDay() {
           ${load != null ? `<div class="load-badge">${load}</div>` : ''}
           ${ex.type === 'rpe' && ex.rpe ? `<div class="load-badge rpe-badge">@RPE ${ex.rpe}</div>` : ''}
         </div>
+        ${isMain && load != null ? renderWarmupBlock(week, dayIdx, exIdx, load) : ''}
         <div class="log-row">
           <div>
             <label>Weight Used</label>
@@ -408,7 +446,62 @@ function renderDay() {
     </button>
   `;
 
+  const dayWarmupPrefix = `${week}-${dayIdx}-`;
+  const hasWarmupsThisDay = Object.keys(state.warmups).some((k) => k.startsWith(dayWarmupPrefix));
+  if (hasWarmupsThisDay) {
+    html += `
+      <button class="btn btn-secondary btn-block mt-2" onclick="toggleAllWarmupsForDay(${week},${dayIdx})">Show/Hide All Warmups</button>
+      <button class="btn btn-secondary btn-block mt-2" onclick="resetWarmupsForDay(${week},${dayIdx})">Reset Warmup Tables</button>
+    `;
+  }
+
   mainEl.innerHTML = html;
+}
+
+function renderWarmupBlock(week, dayIdx, exIdx, defaultWeight) {
+  const key = getLogKey(week, dayIdx, exIdx);
+  const warmup = state.warmups[key];
+
+  let html = `
+    <div class="warmup-block">
+      <div class="warmup-buttons">
+        ${Object.keys(WARMUP_SCHEMES).map((s) => `
+          <button class="btn-warmup ${warmup && warmup.scheme === s ? 'active' : ''}" onclick="generateWarmup(${week},${dayIdx},${exIdx},'${s}',${defaultWeight})">${WARMUP_SCHEMES[s].label}</button>
+        `).join('')}
+      </div>
+  `;
+
+  if (warmup) {
+    html += `
+      <div class="warmup-table-wrap">
+        <div class="warmup-table-header" onclick="toggleWarmupExpanded(${week},${dayIdx},${exIdx})">
+          <span>${WARMUP_SCHEMES[warmup.scheme].label} Warmup — target ${warmup.targetWeight}</span>
+          <svg class="chevron ${warmup.expanded ? 'open' : ''}" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+        <div class="warmup-recalibrate ${warmup.expanded ? '' : 'hidden'}">
+          <label>Target Weight</label>
+          <input type="number" inputmode="decimal" value="${warmup.targetWeight}"
+            onchange="recalibrateWarmup(${week},${dayIdx},${exIdx},this.value)" />
+        </div>
+        <table class="warmup-table ${warmup.expanded ? '' : 'hidden'}">
+          <thead><tr><th>Stage</th><th>Weight</th><th>Reps</th><th>Rest</th></tr></thead>
+          <tbody>${renderWarmupTableRows(warmup.scheme, warmup.targetWeight)}</tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  html += `</div>`;
+  return html;
+}
+
+function renderWarmupTableRows(scheme, targetWeight) {
+  const rows = [`<tr><td>Empty Bar</td><td>—</td><td>8-10</td><td>N/A</td></tr>`];
+  WARMUP_SCHEMES[scheme].steps.forEach((s) => {
+    const weight = mround(targetWeight * s.percent, state.rounding);
+    rows.push(`<tr><td>${s.percentLabel}%</td><td>${weight}</td><td>${s.reps}</td><td>${s.rest}</td></tr>`);
+  });
+  return rows.join('');
 }
 
 function renderAuth() {
@@ -955,6 +1048,43 @@ function resetDayCustom(week, dayIdx) {
   saveState();
   render();
   showToast('Day reset to default');
+}
+
+// ========== WARMUP CALCULATOR (session-only, not persisted) ==========
+function generateWarmup(week, dayIdx, exIdx, scheme, defaultWeight) {
+  const key = getLogKey(week, dayIdx, exIdx);
+  state.warmups[key] = { scheme, targetWeight: defaultWeight, expanded: true };
+  render();
+}
+
+function recalibrateWarmup(week, dayIdx, exIdx, value) {
+  const key = getLogKey(week, dayIdx, exIdx);
+  const w = state.warmups[key];
+  if (!w) return;
+  const parsed = parseFloat(value);
+  if (!isNaN(parsed)) w.targetWeight = parsed;
+  render();
+}
+
+function toggleWarmupExpanded(week, dayIdx, exIdx) {
+  const w = state.warmups[getLogKey(week, dayIdx, exIdx)];
+  if (!w) return;
+  w.expanded = !w.expanded;
+  render();
+}
+
+function toggleAllWarmupsForDay(week, dayIdx) {
+  const keys = Object.keys(state.warmups).filter((k) => k.startsWith(`${week}-${dayIdx}-`));
+  const anyExpanded = keys.some((k) => state.warmups[k].expanded);
+  keys.forEach((k) => { state.warmups[k].expanded = !anyExpanded; });
+  render();
+}
+
+function resetWarmupsForDay(week, dayIdx) {
+  Object.keys(state.warmups).forEach((k) => {
+    if (k.startsWith(`${week}-${dayIdx}-`)) delete state.warmups[k];
+  });
+  render();
 }
 
 // ========== EVENT LISTENERS ==========

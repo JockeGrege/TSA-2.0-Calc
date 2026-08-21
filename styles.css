@@ -418,6 +418,119 @@ input::-webkit-inner-spin-button {
   color: var(--warning);
 }
 
+/* Warmup calculator */
+.warmup-block {
+  margin-bottom: 12px;
+}
+
+.warmup-buttons {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.btn-warmup {
+  flex: 1;
+  padding: 8px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-warmup:active {
+  transform: scale(0.97);
+}
+
+.btn-warmup.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.warmup-table-wrap {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.warmup-table-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.warmup-table-header .chevron {
+  flex: none;
+  transition: transform 0.15s;
+  color: var(--text-dim);
+}
+
+.warmup-table-header .chevron.open {
+  transform: rotate(180deg);
+}
+
+.warmup-recalibrate {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px 10px;
+}
+
+.warmup-recalibrate label {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.warmup-recalibrate input {
+  padding: 6px 8px;
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.warmup-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.warmup-table th,
+.warmup-table td {
+  padding: 6px 10px;
+  text-align: center;
+  border-top: 1px solid var(--border);
+}
+
+.warmup-table th {
+  color: var(--text-dim);
+  font-weight: 600;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  border-top: none;
+}
+
+.warmup-table td:first-child,
+.warmup-table th:first-child {
+  text-align: left;
+}
+
+.warmup-table td {
+  font-family: var(--mono);
+  color: var(--text);
+}
+
 /* Log inputs */
 .log-row {
   display: grid;
