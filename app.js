@@ -51,9 +51,50 @@ const WARMUP_SCHEMES = {
   }
 };
 
+// ========== PLATE CALCULATOR DATA ==========
+const PLATE_DENOMS_KG = [25, 20, 15, 10, 5, 2.5, 1.25];
+const PLATE_DENOMS_LB = [45, 35, 25, 10, 5, 2.5];
+const BARBELL_OPTIONS_KG = [12, 15, 20, 25, 30];
+const BARBELL_OPTIONS_LB = [33, 35, 45, 55];
+
+const PLATE_VISUAL_KG = {
+  25:   { color: '#dc2626', width: 26, height: 100 },
+  20:   { color: '#2563eb', width: 22, height: 100 },
+  15:   { color: '#facc15', width: 18, height: 90 },
+  10:   { color: '#4ade80', width: 16, height: 80 },
+  5:    { color: '#f8fafc', width: 12, height: 60, border: '#334155' },
+  2.5:  { color: '#000000', width: 8,  height: 45, border: '#6b7280' },
+  1.25: { color: '#6b7280', width: 6,  height: 35, border: '#000000' }
+};
+const PLATE_VISUAL_LB = {
+  45: { color: '#dc2626', width: 26, height: 100 },
+  35: { color: '#2563eb', width: 22, height: 90 },
+  25: { color: '#facc15', width: 18, height: 80 },
+  10: { color: '#4ade80', width: 14, height: 70 },
+  5:  { color: '#f8fafc', width: 10, height: 55, border: '#334155' },
+  2.5:{ color: '#000000', width: 7,  height: 40, border: '#6b7280' }
+};
+
+const BARBELL_ICON_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="1" y1="12" x2="4" y2="12"/><rect x="4" y="9" width="2" height="6" fill="currentColor"/><rect x="6" y="6" width="3" height="12" fill="currentColor"/><line x1="9" y1="12" x2="15" y2="12"/><rect x="15" y="6" width="3" height="12" fill="currentColor"/><rect x="18" y="9" width="2" height="6" fill="currentColor"/><line x1="20" y1="12" x2="23" y2="12"/></svg>`;
+
+function defaultPlateSettings() {
+  const platesKg = {};
+  PLATE_DENOMS_KG.forEach((d) => { platesKg[d] = { count: 0, unlimited: true }; });
+  const platesLb = {};
+  PLATE_DENOMS_LB.forEach((d) => { platesLb[d] = { count: 0, unlimited: true }; });
+  return {
+    barbellKg: 20,
+    barbellLb: 45,
+    collars: false,
+    platesKg,
+    platesLb
+  };
+}
+
 // ========== STATE ==========
 const state = {
-  view: 'home', // home | setup | week | day | auth | profiles
+  view: 'home', // home | setup | week | day | auth | profiles | plates
+  viewHistory: [], // back-stack of prior views; goBack() pops it
   currentWeek: null,
   currentDayIdx: 0,
   maxes: {
@@ -68,8 +109,15 @@ const state = {
   logs: {}, // "week-dayIdx-exIdx" -> { weightUsed, repsDone, rpe }
   editing: null, // { week, dayIdx, exIdx } or 'add'
 
+  // Plate calculator settings (persisted, synced like maxes/rounding)
+  plateSettings: defaultPlateSettings(),
+
   // Warmup calculator (session-only; never saved or synced)
   warmups: {}, // "week-dayIdx-exIdx" -> { scheme, targetWeight, expanded }
+
+  // Plate breakdown UI (session-only; never saved or synced)
+  plateBreakdownOpen: {}, // id -> boolean
+  plateCalcWeight: '', // manual weight entry on the standalone Plate Calculator screen
 
   // Auth / cloud sync
   user: null,
@@ -91,7 +139,8 @@ function saveState() {
     maxes: state.maxes,
     rounding: state.rounding,
     customExercises: state.customExercises,
-    logs: state.logs
+    logs: state.logs,
+    plateSettings: state.plateSettings
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
 
@@ -155,6 +204,79 @@ function calcLoad(percent, lift) {
   return mround(e1rm * percent, state.rounding);
 }
 
+// ========== PLATE CALCULATOR ==========
+function getPlateUnit() {
+  return state.rounding === 2.5 ? 'kg' : 'lb';
+}
+
+function getPlateDenoms() {
+  return getPlateUnit() === 'kg' ? PLATE_DENOMS_KG : PLATE_DENOMS_LB;
+}
+
+function getPlateVisual() {
+  return getPlateUnit() === 'kg' ? PLATE_VISUAL_KG : PLATE_VISUAL_LB;
+}
+
+function getActivePlates() {
+  return getPlateUnit() === 'kg' ? state.plateSettings.platesKg : state.plateSettings.platesLb;
+}
+
+function getBarbellWeight() {
+  return getPlateUnit() === 'kg' ? state.plateSettings.barbellKg : state.plateSettings.barbellLb;
+}
+
+function getCollarWeight() {
+  return state.plateSettings.collars ? state.rounding : 0;
+}
+
+function computePlateBreakdown(targetWeight) {
+  const barbell = getBarbellWeight();
+  const collarWeight = getCollarWeight();
+  const unit = getPlateUnit();
+  let perSide = (targetWeight - barbell - collarWeight) / 2;
+  const shortBy = perSide < 0 ? -perSide * 2 : 0;
+  perSide = Math.max(0, perSide);
+
+  const plates = getActivePlates();
+  const denoms = getPlateDenoms();
+  const breakdown = [];
+  let remaining = perSide;
+
+  denoms.forEach((d) => {
+    const info = plates[d] || { count: 0, unlimited: false };
+    const maxUsable = info.unlimited ? Infinity : Math.floor(info.count / 2);
+    const n = Math.min(maxUsable, Math.floor(remaining / d + 1e-9));
+    if (n > 0) {
+      breakdown.push({ denom: d, count: n });
+      remaining -= n * d;
+    }
+  });
+
+  return {
+    barbell,
+    collars: state.plateSettings.collars,
+    collarWeight,
+    perSide: breakdown,
+    leftoverPerSide: remaining,
+    shortBy,
+    unit
+  };
+}
+
+function formatPlateBreakdown(breakdown) {
+  if (breakdown.shortBy > 0.001) {
+    return `Below empty bar${breakdown.collars ? ' + collars' : ''} by ${breakdown.shortBy}`;
+  }
+  if (breakdown.perSide.length === 0) {
+    return 'Empty bar only';
+  }
+  const parts = breakdown.perSide.map((p) => `${p.count}×${p.denom}`).join(' + ');
+  const leftoverNote = breakdown.leftoverPerSide > 0.001
+    ? ` (short ${(breakdown.leftoverPerSide * 2).toFixed(2).replace(/\.00$/, '')} — not enough plates)`
+    : '';
+  return `${parts} per side${leftoverNote}`;
+}
+
 function updateE1RMs() {
   for (const lift of ['squat', 'bench', 'deadlift']) {
     const m = state.maxes[lift];
@@ -190,6 +312,7 @@ const headerTitle = document.getElementById('header-title');
 const btnBack = document.getElementById('btn-back');
 const btnSetup = document.getElementById('btn-setup');
 const btnProfile = document.getElementById('btn-profile');
+const btnPlates = document.getElementById('btn-plates');
 const bottomNav = document.getElementById('bottom-nav');
 
 function showToast(msg, duration = 2000) {
@@ -204,6 +327,7 @@ function render() {
     btnBack.classList.add('hidden');
     btnSetup.classList.add('hidden');
     btnProfile.classList.add('hidden');
+    btnPlates.classList.add('hidden');
     syncIndicator.classList.add('hidden');
     bottomNav.classList.add('hidden');
     headerTitle.textContent = 'TSA 9-Week';
@@ -217,6 +341,7 @@ function render() {
   btnBack.classList.toggle('hidden', state.view === 'home' || state.view === 'auth');
   btnSetup.classList.toggle('hidden', state.view === 'auth');
   btnProfile.classList.toggle('hidden', state.view === 'auth');
+  btnPlates.classList.toggle('hidden', state.view === 'auth');
   setSyncStatus(state.syncStatus);
   bottomNav.classList.add('hidden');
 
@@ -229,6 +354,9 @@ function render() {
   } else if (state.view === 'profiles') {
     headerTitle.textContent = 'Profiles';
     renderProfiles();
+  } else if (state.view === 'plates') {
+    headerTitle.textContent = 'Plate Calculator';
+    renderPlateCalculator();
   } else if (state.view === 'home') {
     headerTitle.textContent = 'TSA 9-Week';
     renderHome();
@@ -436,9 +564,10 @@ function renderDay() {
           <div class="meta-item"><strong>${ex.sets || '—'}</strong> sets</div>
           <div class="meta-item"><strong>${ex.reps || '—'}</strong> reps</div>
           ${ex.intensity ? `<div class="meta-item">${ex.intensity}</div>` : ''}
-          ${load != null ? `<div class="load-badge">${load}</div>` : ''}
+          ${load != null ? `<div class="load-badge">${load}${renderPlateToggleButton(`main-${logKey}`)}</div>` : ''}
           ${ex.type === 'rpe' && ex.rpe ? `<div class="load-badge rpe-badge">@RPE ${ex.rpe}</div>` : ''}
         </div>
+        ${load != null && state.plateBreakdownOpen[`main-${logKey}`] ? renderPlateInlineDetail(load) : ''}
         ${isMain && load != null ? renderWarmupBlock(week, dayIdx, exIdx, load) : ''}
         <div class="log-row">
           <div>
@@ -483,6 +612,31 @@ function renderDay() {
   mainEl.innerHTML = html;
 }
 
+function renderPlateToggleButton(id) {
+  const open = !!state.plateBreakdownOpen[id];
+  return `<button class="plate-toggle-btn ${open ? 'open' : ''}" onclick="event.stopPropagation();togglePlateBreakdown('${id}')" title="Plate breakdown">${BARBELL_ICON_SVG}</button>`;
+}
+
+function renderPlateInlineDetail(weight) {
+  const breakdown = computePlateBreakdown(weight);
+  return `
+    <div class="plate-inline-detail">
+      <span>${formatPlateBreakdown(breakdown)}</span>
+      <a href="#" onclick="openPlateCalculatorFor(${weight});return false;">View barbell →</a>
+    </div>
+  `;
+}
+
+function togglePlateBreakdown(id) {
+  state.plateBreakdownOpen[id] = !state.plateBreakdownOpen[id];
+  render();
+}
+
+function openPlateCalculatorFor(weight) {
+  state.plateCalcWeight = String(weight);
+  navigateTo('plates');
+}
+
 function renderWarmupBlock(week, dayIdx, exIdx, defaultWeight) {
   const key = getLogKey(week, dayIdx, exIdx);
   const warmup = state.warmups[key];
@@ -510,7 +664,7 @@ function renderWarmupBlock(week, dayIdx, exIdx, defaultWeight) {
         </div>
         <table class="warmup-table ${warmup.expanded ? '' : 'hidden'}">
           <thead><tr><th>Stage</th><th>Weight</th><th>Reps</th><th>Rest</th></tr></thead>
-          <tbody>${renderWarmupTableRows(warmup.scheme, warmup.targetWeight)}</tbody>
+          <tbody>${renderWarmupTableRows(warmup.scheme, warmup.targetWeight, week, dayIdx, exIdx)}</tbody>
         </table>
       </div>
     `;
@@ -520,11 +674,15 @@ function renderWarmupBlock(week, dayIdx, exIdx, defaultWeight) {
   return html;
 }
 
-function renderWarmupTableRows(scheme, targetWeight) {
+function renderWarmupTableRows(scheme, targetWeight, week, dayIdx, exIdx) {
   const rows = [`<tr><td>Empty Bar</td><td>—</td><td>8-10</td><td>N/A</td></tr>`];
-  WARMUP_SCHEMES[scheme].steps.forEach((s) => {
+  WARMUP_SCHEMES[scheme].steps.forEach((s, stepIdx) => {
     const weight = mround(targetWeight * s.percent, state.rounding);
-    rows.push(`<tr><td>${s.percentLabel}%</td><td>${weight}</td><td>${s.reps}</td><td>${s.rest}</td></tr>`);
+    const id = `warmup-${week}-${dayIdx}-${exIdx}-${stepIdx}`;
+    rows.push(`<tr><td>${s.percentLabel}%</td><td>${weight} ${renderPlateToggleButton(id)}</td><td>${s.reps}</td><td>${s.rest}</td></tr>`);
+    if (state.plateBreakdownOpen[id]) {
+      rows.push(`<tr><td colspan="4">${renderPlateInlineDetail(weight)}</td></tr>`);
+    }
   });
   return rows.join('');
 }
@@ -584,32 +742,124 @@ function renderProfiles() {
   mainEl.innerHTML = html;
 }
 
+function renderBarbellVisual(breakdown) {
+  const visual = getPlateVisual();
+  let html = `<div id="plate-barbell-visual" class="barbell-visual" onclick="openPlateSettingsModal()">`;
+  html += `<div class="barbell-sleeve"></div>`;
+  if (breakdown.collars) html += `<div class="barbell-collar"></div>`;
+  breakdown.perSide.forEach((p) => {
+    const v = visual[p.denom] || { color: 'var(--text-dim)', width: 10, height: 50 };
+    const borderStyle = v.border ? `border:2px solid ${v.border};` : '';
+    for (let i = 0; i < p.count; i++) {
+      html += `<div class="barbell-plate" style="width:${v.width}px;height:${v.height}px;background:${v.color};${borderStyle}" onclick="event.stopPropagation();openPlateCountModal(${p.denom},false)" title="${p.denom} ${breakdown.unit}"></div>`;
+    }
+  });
+  html += `<div class="barbell-bar"></div>`;
+  html += `</div>`;
+  return html;
+}
+
+function renderPlateSummary(breakdown) {
+  if (!breakdown) {
+    return `<p class="note">Enter a weight above to see the plate breakdown.</p>`;
+  }
+  const totalPerSide = breakdown.perSide.reduce((sum, p) => sum + p.denom * p.count, 0);
+  const total = breakdown.barbell + breakdown.collarWeight + totalPerSide * 2;
+
+  let html = `<div class="plate-summary-row"><span>Barbell</span><span>${breakdown.barbell} ${breakdown.unit}</span></div>`;
+  if (breakdown.collars) {
+    html += `<div class="plate-summary-row"><span>Collars</span><span>${breakdown.collarWeight} ${breakdown.unit}</span></div>`;
+  }
+  if (breakdown.perSide.length === 0) {
+    html += `<div class="plate-summary-row"><span>Plates per side</span><span>—</span></div>`;
+  } else {
+    breakdown.perSide.forEach((p) => {
+      html += `<div class="plate-summary-row"><span>${p.denom} ${breakdown.unit} × ${p.count} (per side)</span><span>${p.denom * p.count * 2} ${breakdown.unit}</span></div>`;
+    });
+  }
+  html += `<div class="plate-summary-row plate-summary-total"><span>Total</span><span>${total}</span></div>`;
+
+  if (breakdown.shortBy > 0.001) {
+    html += `<p class="note" style="color:var(--danger);margin-top:8px;">Below the minimum loadable weight (empty bar${breakdown.collars ? ' + collars' : ''}) by ${breakdown.shortBy}</p>`;
+  } else if (breakdown.leftoverPerSide > 0.001) {
+    html += `<p class="note" style="color:var(--warning);margin-top:8px;">Not enough plates available — short ${(breakdown.leftoverPerSide * 2).toFixed(2).replace(/\.00$/, '')} ${breakdown.unit}</p>`;
+  }
+  return html;
+}
+
+function refreshPlateCalcDisplay() {
+  const weight = parseFloat(state.plateCalcWeight);
+  const breakdown = !isNaN(weight) ? computePlateBreakdown(weight) : null;
+  document.getElementById('plate-barbell-visual').outerHTML = renderBarbellVisual(breakdown || { collars: state.plateSettings.collars, perSide: [], unit: getPlateUnit() });
+  document.getElementById('plate-summary').innerHTML = renderPlateSummary(breakdown);
+}
+
+function updatePlateCalcWeight(value) {
+  state.plateCalcWeight = value;
+  refreshPlateCalcDisplay();
+}
+
+function renderPlateCalculator() {
+  const weight = parseFloat(state.plateCalcWeight);
+  const breakdown = !isNaN(weight) ? computePlateBreakdown(weight) : null;
+
+  let html = `
+    <p class="note" style="margin-bottom:12px;">Put these plates on each side (tap the bar to edit barbell/collars/plates)</p>
+    ${renderBarbellVisual(breakdown || { collars: state.plateSettings.collars, perSide: [], unit: getPlateUnit() })}
+    <div class="card-title" style="margin-top:16px;">Summary</div>
+    <div class="card" id="plate-summary">${renderPlateSummary(breakdown)}</div>
+    <div class="form-group" style="margin-top:16px;">
+      <label>Weight (${getPlateUnit()})</label>
+      <input type="number" inputmode="decimal" placeholder="0" value="${state.plateCalcWeight}"
+        oninput="updatePlateCalcWeight(this.value)" />
+    </div>
+  `;
+  mainEl.innerHTML = html;
+}
+
 // ========== NAVIGATION ==========
+// state.viewHistory is a back-stack: every navigateTo() push the view being left,
+// and goBack() pops it, so "back" always returns to wherever the user actually came
+// from, however they got here (header icons, inline links, etc).
+function navigateTo(view) {
+  if (state.view !== view) {
+    state.viewHistory.push(state.view);
+  }
+  state.view = view;
+  render();
+}
+
+function goBack() {
+  state.view = state.viewHistory.pop() || 'home';
+  render();
+}
+
 function goHome() {
+  state.viewHistory = [];
   state.view = 'home';
   render();
 }
 
 function goSetup() {
-  state.view = 'setup';
-  render();
+  navigateTo('setup');
 }
 
 function goWeek(week) {
   state.currentWeek = week;
-  state.view = 'week';
-  render();
+  navigateTo('week');
 }
 
 function goDay(dayIdx) {
   state.currentDayIdx = dayIdx;
-  state.view = 'day';
-  render();
+  navigateTo('day');
 }
 
 function goProfiles() {
-  state.view = 'profiles';
-  render();
+  navigateTo('profiles');
+}
+
+function goPlates() {
+  navigateTo('plates');
 }
 
 // ========== SETUP HANDLERS ==========
@@ -637,7 +887,8 @@ function defaultProfileData() {
     },
     rounding: 2.5,
     customExercises: {},
-    logs: {}
+    logs: {},
+    plateSettings: defaultPlateSettings()
   };
 }
 
@@ -649,6 +900,7 @@ function resetAllData() {
     state.rounding = defaults.rounding;
     state.customExercises = defaults.customExercises;
     state.logs = defaults.logs;
+    state.plateSettings = defaults.plateSettings;
     if (state.user && state.profileId) {
       window.Firebase.saveProfileData(state.user.uid, state.profileId, defaults)
         .catch((e) => console.warn('Cloud reset failed', e));
@@ -719,6 +971,7 @@ async function applyProfileData(profileId) {
     if (data.rounding) state.rounding = data.rounding;
     if (data.customExercises) state.customExercises = data.customExercises;
     if (data.logs) state.logs = data.logs;
+    if (data.plateSettings) state.plateSettings = data.plateSettings;
   }
 }
 
@@ -731,6 +984,7 @@ function subscribeToProfile(profileId) {
     if (data.rounding) state.rounding = data.rounding;
     if (data.customExercises) state.customExercises = data.customExercises;
     if (data.logs) state.logs = data.logs;
+    if (data.plateSettings) state.plateSettings = data.plateSettings;
     if (!isEditingInput) render();
   });
 }
@@ -804,7 +1058,8 @@ async function duplicateProfileHandler(name) {
     maxes: state.maxes,
     rounding: state.rounding,
     customExercises: state.customExercises,
-    logs: state.logs
+    logs: state.logs,
+    plateSettings: state.plateSettings
   };
   await window.Firebase.createProfile(uid, name, seed);
   state.profiles = await window.Firebase.listProfiles(uid);
@@ -826,6 +1081,7 @@ async function resetProfileHandler(profileId) {
     state.rounding = defaults.rounding;
     state.customExercises = defaults.customExercises;
     state.logs = defaults.logs;
+    state.plateSettings = defaults.plateSettings;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(defaults));
   }
   showToast('Profile reset to default');
@@ -980,11 +1236,27 @@ function openAddModal(week, dayIdx) {
 
 function closeModal() {
   document.getElementById('modal-overlay').classList.add('hidden');
+  document.getElementById('modal-save').classList.remove('hidden');
+  document.getElementById('modal-save').textContent = 'Save';
   state.editing = null;
 }
 
 function saveModal() {
   if (!state.editing) return;
+
+  if (state.editing.mode === 'plate-count') {
+    const denom = state.editing.denom;
+    const returnToSettings = state.editing.returnToSettings;
+    const unlimited = document.getElementById('plate-unlimited-input').checked;
+    const countVal = Math.max(0, parseInt(document.getElementById('plate-count-input').value, 10) || 0);
+    getActivePlates()[denom] = { count: countVal, unlimited };
+    saveState();
+    closeModal();
+    if (returnToSettings) openPlateSettingsModal();
+    if (state.view === 'plates') refreshPlateCalcDisplay();
+    if (state.view !== 'plates' && !returnToSettings) render();
+    return;
+  }
 
   if (state.editing.mode === 'new-profile' || state.editing.mode === 'rename-profile' || state.editing.mode === 'duplicate-profile') {
     const profileName = document.getElementById('profile-name').value.trim();
@@ -1112,18 +1384,93 @@ function resetWarmupsForDay(week, dayIdx) {
   render();
 }
 
+// ========== PLATE CALCULATOR SETTINGS ==========
+function openPlateSettingsModal() {
+  state.editing = { mode: 'plate-settings' };
+  const unit = getPlateUnit();
+  const barbellOptions = unit === 'kg' ? BARBELL_OPTIONS_KG : BARBELL_OPTIONS_LB;
+  const currentBarbell = getBarbellWeight();
+  const denoms = getPlateDenoms();
+  const plates = getActivePlates();
+
+  document.getElementById('modal-title').textContent = 'Barbell & Plates';
+  document.getElementById('modal-body').innerHTML = `
+    <div class="form-group">
+      <label>Barbell (${unit})</label>
+      <div class="choice-row">
+        ${barbellOptions.map((b) => `<button class="choice-btn ${b === currentBarbell ? 'active' : ''}" onclick="setBarbellWeight(${b})">${b}</button>`).join('')}
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Collars</label>
+      <div class="choice-row">
+        <button class="choice-btn ${!state.plateSettings.collars ? 'active' : ''}" onclick="setCollars(false)">Off</button>
+        <button class="choice-btn ${state.plateSettings.collars ? 'active' : ''}" onclick="setCollars(true)">${state.rounding}</button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Total available plates (${unit})</label>
+      <div class="plate-list">
+        ${denoms.map((d) => {
+          const info = plates[d] || { count: 0, unlimited: true };
+          return `
+            <button class="plate-list-row" onclick="openPlateCountModal(${d},true)">
+              <span>${d} ${unit}</span>
+              <span>${info.unlimited ? '∞' : 'x' + info.count}</span>
+            </button>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `;
+  document.getElementById('modal-save').classList.add('hidden');
+  document.getElementById('modal-overlay').classList.remove('hidden');
+}
+
+function setBarbellWeight(val) {
+  if (getPlateUnit() === 'kg') state.plateSettings.barbellKg = val;
+  else state.plateSettings.barbellLb = val;
+  saveState();
+  openPlateSettingsModal();
+  if (state.view === 'plates') refreshPlateCalcDisplay();
+}
+
+function setCollars(val) {
+  state.plateSettings.collars = val;
+  saveState();
+  openPlateSettingsModal();
+  if (state.view === 'plates') refreshPlateCalcDisplay();
+}
+
+function openPlateCountModal(denom, returnToSettings) {
+  const plates = getActivePlates();
+  const info = plates[denom] || { count: 0, unlimited: true };
+  state.editing = { mode: 'plate-count', denom, returnToSettings };
+
+  document.getElementById('modal-title').textContent = 'Total available plates';
+  document.getElementById('modal-body').innerHTML = `
+    <p style="text-align:center;font-size:1.3rem;font-weight:700;margin-bottom:16px;">${denom} ${getPlateUnit()}</p>
+    <div class="form-group">
+      <label>Total count you own (both sides)</label>
+      <input type="number" id="plate-count-input" value="${info.count}" min="0" ${info.unlimited ? 'disabled' : ''} />
+    </div>
+    <div class="form-group" style="display:flex;align-items:center;gap:8px;">
+      <input type="checkbox" id="plate-unlimited-input" ${info.unlimited ? 'checked' : ''}
+        onchange="document.getElementById('plate-count-input').disabled = this.checked;" style="width:auto;" />
+      <label style="margin:0;">Unlimited</label>
+    </div>
+  `;
+  document.getElementById('modal-save').textContent = 'Update';
+  document.getElementById('modal-save').classList.remove('hidden');
+  document.getElementById('modal-overlay').classList.remove('hidden');
+}
+
 // ========== EVENT LISTENERS ==========
-document.getElementById('btn-back').addEventListener('click', () => {
-  if (state.view === 'day') {
-    state.view = 'week';
-  } else if (state.view === 'week' || state.view === 'setup' || state.view === 'profiles') {
-    state.view = 'home';
-  }
-  render();
-});
+document.getElementById('btn-back').addEventListener('click', goBack);
 
 document.getElementById('btn-setup').addEventListener('click', goSetup);
 document.getElementById('btn-profile').addEventListener('click', goProfiles);
+document.getElementById('btn-plates').addEventListener('click', goPlates);
 
 document.getElementById('modal-close').addEventListener('click', closeModal);
 document.getElementById('modal-cancel').addEventListener('click', closeModal);
@@ -1159,7 +1506,10 @@ async function loadUserProfileContext(uid) {
     subscribeToProfile(profileId);
   }
   state.profiles = await window.Firebase.listProfiles(uid);
-  if (state.view === 'auth') state.view = 'home';
+  if (state.view === 'auth') {
+    state.view = 'home';
+    state.viewHistory = [];
+  }
 }
 
 async function init() {
@@ -1189,6 +1539,7 @@ async function init() {
       state.profileId = null;
       state.profiles = [];
       state.view = 'auth';
+      state.viewHistory = [];
     }
     render();
   });

@@ -554,6 +554,163 @@ input::-webkit-inner-spin-button {
   color: var(--text);
 }
 
+/* Plate breakdown (inline companion) */
+.plate-toggle-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 2px;
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  transition: color 0.15s;
+}
+
+.plate-toggle-btn.open,
+.plate-toggle-btn:hover {
+  color: var(--accent);
+}
+
+.plate-inline-detail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.plate-inline-detail a {
+  color: var(--accent);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+/* Plate Calculator screen */
+.barbell-visual {
+  display: flex;
+  align-items: center;
+  height: 120px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0 16px;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.barbell-sleeve {
+  width: 50px;
+  height: 14px;
+  background: var(--text-dim);
+  border-radius: 2px;
+  flex: none;
+}
+
+.barbell-collar {
+  width: 8px;
+  height: 24px;
+  background: var(--text-dim);
+  border-radius: 2px;
+  flex: none;
+  margin-left: 2px;
+}
+
+.barbell-plate {
+  border-radius: 3px;
+  flex: none;
+  margin-left: 2px;
+  transition: transform 0.1s;
+}
+
+.barbell-plate:active {
+  transform: scale(0.96);
+}
+
+.barbell-bar {
+  flex: 1;
+  height: 8px;
+  background: var(--bg-elevated);
+  border-radius: 4px;
+  margin-left: 2px;
+  min-width: 40px;
+}
+
+.plate-summary-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
+.plate-summary-row:last-of-type {
+  border-bottom: none;
+}
+
+.plate-summary-row span:last-child {
+  font-family: var(--mono);
+  color: var(--text);
+}
+
+.plate-summary-total {
+  font-weight: 700;
+  padding-top: 12px;
+}
+
+.plate-summary-total span {
+  color: var(--accent) !important;
+}
+
+.choice-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.choice-btn {
+  padding: 8px 14px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.choice-btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.plate-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.plate-list-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
 /* Log inputs */
 .log-row {
   display: grid;
