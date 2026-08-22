@@ -76,8 +76,8 @@ html, body {
   background: none;
   border: none;
   color: var(--text);
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -227,14 +227,8 @@ input:focus, select:focus {
   border-color: var(--accent);
 }
 
-input[type="number"] {
+input[inputmode="decimal"], input[inputmode="numeric"] {
   font-family: var(--mono);
-  -moz-appearance: textfield;
-}
-
-input::-webkit-outer-spin-button,
-input::-webkit-inner-spin-button {
-  -webkit-appearance: none;
 }
 
 .e1rm {
@@ -436,9 +430,23 @@ input::-webkit-inner-spin-button {
   font-size: 0.95rem;
 }
 
+.load-badge.has-plate-toggle {
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
 .rpe-badge {
   background: rgba(251, 191, 36, 0.15);
   color: var(--warning);
+}
+
+.warmup-weight-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 6px;
+  margin: -8px -6px;
+  cursor: pointer;
 }
 
 /* Warmup calculator */
@@ -622,14 +630,22 @@ input::-webkit-inner-spin-button {
   margin-left: 2px;
 }
 
+.barbell-plate-hit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  padding: 0 6px;
+  margin-left: 2px;
+  cursor: pointer;
+}
+
 .barbell-plate {
   border-radius: 3px;
-  flex: none;
-  margin-left: 2px;
   transition: transform 0.1s;
 }
 
-.barbell-plate:active {
+.barbell-plate-hit:active .barbell-plate {
   transform: scale(0.96);
 }
 
@@ -694,6 +710,28 @@ input::-webkit-inner-spin-button {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.unlimited-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  margin-bottom: 16px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.unlimited-toggle input[type="checkbox"] {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: none;
+  accent-color: var(--accent);
+  flex: none;
 }
 
 .plate-list-row {
