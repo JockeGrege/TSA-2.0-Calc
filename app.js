@@ -1392,6 +1392,7 @@ function openPlateSettingsModal() {
   const currentBarbell = getBarbellWeight();
   const denoms = getPlateDenoms();
   const plates = getActivePlates();
+  const visuals = getPlateVisual();
 
   document.getElementById('modal-title').textContent = 'Barbell & Plates';
   document.getElementById('modal-body').innerHTML = `
@@ -1413,9 +1414,11 @@ function openPlateSettingsModal() {
       <div class="plate-list">
         ${denoms.map((d) => {
           const info = plates[d] || { count: 0, unlimited: true };
+          const v = visuals[d] || {};
+          const swatchStyle = `background:${v.color || '#888'};${v.border ? `border:2px solid ${v.border};` : ''}`;
           return `
             <button class="plate-list-row" onclick="openPlateCountModal(${d},true)">
-              <span>${d} ${unit}</span>
+              <span class="plate-swatch-label"><span class="plate-swatch" style="${swatchStyle}"></span>${d} ${unit}</span>
               <span>${info.unlimited ? '∞' : 'x' + info.count}</span>
             </button>
           `;
