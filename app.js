@@ -455,19 +455,19 @@ function renderSetup() {
         <label>${lift.label}</label>
         <div class="form-row">
           <div>
-            <input type="number" inputmode="decimal" placeholder="Weight" 
+            <input type="text" inputmode="decimal" placeholder="Weight" 
               value="${m.weight || ''}" 
               onchange="updateMax('${lift.key}','weight',this.value)"
               oninput="updateMax('${lift.key}','weight',this.value)" />
           </div>
           <div>
-            <input type="number" inputmode="numeric" placeholder="Reps" 
+            <input type="text" inputmode="numeric" placeholder="Reps" 
               value="${m.reps || ''}" 
               onchange="updateMax('${lift.key}','reps',this.value)"
               oninput="updateMax('${lift.key}','reps',this.value)" />
           </div>
           <div>
-            <input type="number" inputmode="decimal" placeholder="RPE" step="0.5" min="6.5" max="10"
+            <input type="text" inputmode="decimal" placeholder="RPE" step="0.5" min="6.5" max="10"
               value="${m.rpe || ''}" 
               onchange="updateMax('${lift.key}','rpe',this.value)"
               oninput="updateMax('${lift.key}','rpe',this.value)" />
@@ -564,7 +564,7 @@ function renderDay() {
           <div class="meta-item"><strong>${ex.sets || '—'}</strong> sets</div>
           <div class="meta-item"><strong>${ex.reps || '—'}</strong> reps</div>
           ${ex.intensity ? `<div class="meta-item">${ex.intensity}</div>` : ''}
-          ${load != null ? `<div class="load-badge">${load}${renderPlateToggleButton(`main-${logKey}`)}</div>` : ''}
+          ${load != null ? `<div class="load-badge has-plate-toggle" onclick="togglePlateBreakdown('main-${logKey}')">${load}${renderPlateToggleButton(`main-${logKey}`)}</div>` : ''}
           ${ex.type === 'rpe' && ex.rpe ? `<div class="load-badge rpe-badge">@RPE ${ex.rpe}</div>` : ''}
         </div>
         ${load != null && state.plateBreakdownOpen[`main-${logKey}`] ? renderPlateInlineDetail(load) : ''}
@@ -572,7 +572,7 @@ function renderDay() {
         <div class="log-row">
           <div>
             <label>Weight Used</label>
-            <input type="number" inputmode="decimal" placeholder="—" 
+            <input type="text" inputmode="decimal" placeholder="—" 
               value="${log.weightUsed || ''}"
               onchange="saveLog(${week},${dayIdx},${exIdx},'weightUsed',this.value)" />
           </div>
@@ -584,7 +584,7 @@ function renderDay() {
           </div>
           <div>
             <label>RPE</label>
-            <input type="number" inputmode="decimal" step="0.5" placeholder="—" 
+            <input type="text" inputmode="decimal" step="0.5" placeholder="—" 
               value="${log.rpe || ''}"
               onchange="saveLog(${week},${dayIdx},${exIdx},'rpe',this.value)" />
           </div>
@@ -614,7 +614,7 @@ function renderDay() {
 
 function renderPlateToggleButton(id) {
   const open = !!state.plateBreakdownOpen[id];
-  return `<button class="plate-toggle-btn ${open ? 'open' : ''}" onclick="event.stopPropagation();togglePlateBreakdown('${id}')" title="Plate breakdown">${BARBELL_ICON_SVG}</button>`;
+  return `<span class="plate-toggle-btn ${open ? 'open' : ''}" title="Plate breakdown">${BARBELL_ICON_SVG}</span>`;
 }
 
 function renderPlateInlineDetail(weight) {
@@ -659,7 +659,7 @@ function renderWarmupBlock(week, dayIdx, exIdx, defaultWeight) {
         </div>
         <div class="warmup-recalibrate ${warmup.expanded ? '' : 'hidden'}">
           <label>Target Weight</label>
-          <input type="number" inputmode="decimal" value="${warmup.targetWeight}"
+          <input type="text" inputmode="decimal" value="${warmup.targetWeight}"
             onchange="recalibrateWarmup(${week},${dayIdx},${exIdx},this.value)" />
         </div>
         <table class="warmup-table ${warmup.expanded ? '' : 'hidden'}">
@@ -679,7 +679,7 @@ function renderWarmupTableRows(scheme, targetWeight, week, dayIdx, exIdx) {
   WARMUP_SCHEMES[scheme].steps.forEach((s, stepIdx) => {
     const weight = mround(targetWeight * s.percent, state.rounding);
     const id = `warmup-${week}-${dayIdx}-${exIdx}-${stepIdx}`;
-    rows.push(`<tr><td>${s.percentLabel}%</td><td>${weight} ${renderPlateToggleButton(id)}</td><td>${s.reps}</td><td>${s.rest}</td></tr>`);
+    rows.push(`<tr><td>${s.percentLabel}%</td><td><span class="warmup-weight-cell" onclick="togglePlateBreakdown('${id}')">${weight} ${renderPlateToggleButton(id)}</span></td><td>${s.reps}</td><td>${s.rest}</td></tr>`);
     if (state.plateBreakdownOpen[id]) {
       rows.push(`<tr><td colspan="4">${renderPlateInlineDetail(weight)}</td></tr>`);
     }
@@ -751,7 +751,7 @@ function renderBarbellVisual(breakdown) {
     const v = visual[p.denom] || { color: 'var(--text-dim)', width: 10, height: 50 };
     const borderStyle = v.border ? `border:2px solid ${v.border};` : '';
     for (let i = 0; i < p.count; i++) {
-      html += `<div class="barbell-plate" style="width:${v.width}px;height:${v.height}px;background:${v.color};${borderStyle}" onclick="event.stopPropagation();openPlateCountModal(${p.denom},false)" title="${p.denom} ${breakdown.unit}"></div>`;
+      html += `<div class="barbell-plate-hit" onclick="event.stopPropagation();openPlateCountModal(${p.denom},false)" title="${p.denom} ${breakdown.unit}"><div class="barbell-plate" style="width:${v.width}px;height:${v.height}px;background:${v.color};${borderStyle}"></div></div>`;
     }
   });
   html += `<div class="barbell-bar"></div>`;
@@ -813,7 +813,7 @@ function renderPlateCalculator() {
     <div class="card" id="plate-summary">${renderPlateSummary(breakdown)}</div>
     <div class="form-group" style="margin-top:16px;">
       <label>Weight (${getPlateUnit()})</label>
-      <input type="number" inputmode="decimal" placeholder="0" value="${state.plateCalcWeight}"
+      <input type="text" inputmode="decimal" placeholder="0" value="${state.plateCalcWeight}"
         oninput="updatePlateCalcWeight(this.value)" />
     </div>
   `;
@@ -1171,7 +1171,7 @@ function openEditModal(week, dayIdx, exIdx) {
     </div>
     <div class="form-group" id="edit-percent-group" style="${ex.type === 'percentage' ? '' : 'display:none'}">
       <label>Percent (0–1, e.g. 0.75 for 75%)</label>
-      <input type="number" step="0.01" id="edit-percent" value="${ex.percent != null ? ex.percent : ''}" />
+      <input type="text" inputmode="decimal" id="edit-percent" value="${ex.percent != null ? ex.percent : ''}" />
     </div>
     <button class="btn btn-danger btn-block mt-4" onclick="deleteExercise()">Delete Exercise</button>
   `;
@@ -1226,7 +1226,7 @@ function openAddModal(week, dayIdx) {
     </div>
     <div class="form-group" id="edit-percent-group" style="display:none">
       <label>Percent (0–1)</label>
-      <input type="number" step="0.01" id="edit-percent" />
+      <input type="text" inputmode="decimal" id="edit-percent" />
     </div>
   `;
 
@@ -1458,20 +1458,25 @@ function openPlateCountModal(denom, returnToSettings) {
     <p style="text-align:center;font-size:1.3rem;font-weight:700;margin-bottom:16px;">${denom} ${getPlateUnit()}</p>
     <div class="form-group">
       <label>Total count you own (both sides)</label>
-      <input type="number" id="plate-count-input" value="${info.count}" min="0" ${info.unlimited ? 'disabled' : ''} />
+      <input type="text" inputmode="numeric" id="plate-count-input" value="${info.count}" ${info.unlimited ? 'disabled' : ''} />
     </div>
-    <div class="form-group" style="display:flex;align-items:center;gap:8px;">
+    <label class="unlimited-toggle">
       <input type="checkbox" id="plate-unlimited-input" ${info.unlimited ? 'checked' : ''}
-        onchange="document.getElementById('plate-count-input').disabled = this.checked;" style="width:auto;" />
-      <label style="margin:0;">Unlimited</label>
-    </div>
+        onchange="document.getElementById('plate-count-input').disabled = this.checked;" />
+      <span>Unlimited</span>
+    </label>
   `;
   document.getElementById('modal-save').textContent = 'Update';
   document.getElementById('modal-save').classList.remove('hidden');
   document.getElementById('modal-overlay').classList.remove('hidden');
+  if (!info.unlimited) document.getElementById('plate-count-input').focus();
 }
 
 // ========== EVENT LISTENERS ==========
+document.addEventListener('focusin', (e) => {
+  if (e.target.tagName === 'INPUT' && (e.target.inputMode === 'decimal' || e.target.inputMode === 'numeric')) e.target.select();
+});
+
 document.getElementById('btn-back').addEventListener('click', goBack);
 
 document.getElementById('btn-setup').addEventListener('click', goSetup);
