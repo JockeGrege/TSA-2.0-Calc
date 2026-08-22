@@ -711,6 +711,20 @@ input::-webkit-inner-spin-button {
   cursor: pointer;
 }
 
+.plate-swatch-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.plate-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex: none;
+  box-sizing: border-box;
+}
+
 /* Log inputs */
 .log-row {
   display: grid;

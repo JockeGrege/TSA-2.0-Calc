@@ -765,6 +765,7 @@ function renderPlateSummary(breakdown) {
   }
   const totalPerSide = breakdown.perSide.reduce((sum, p) => sum + p.denom * p.count, 0);
   const total = breakdown.barbell + breakdown.collarWeight + totalPerSide * 2;
+  const visuals = getPlateVisual();
 
   let html = `<div class="plate-summary-row"><span>Barbell</span><span>${breakdown.barbell} ${breakdown.unit}</span></div>`;
   if (breakdown.collars) {
@@ -774,7 +775,9 @@ function renderPlateSummary(breakdown) {
     html += `<div class="plate-summary-row"><span>Plates per side</span><span>—</span></div>`;
   } else {
     breakdown.perSide.forEach((p) => {
-      html += `<div class="plate-summary-row"><span>${p.denom} ${breakdown.unit} × ${p.count} (per side)</span><span>${p.denom * p.count * 2} ${breakdown.unit}</span></div>`;
+      const v = visuals[p.denom] || {};
+      const swatchStyle = `background:${v.color || '#888'};${v.border ? `border:2px solid ${v.border};` : ''}`;
+      html += `<div class="plate-summary-row"><span class="plate-swatch-label"><span class="plate-swatch" style="${swatchStyle}"></span>${p.denom} ${breakdown.unit} × ${p.count} (per side)</span><span>${p.denom * p.count * 2} ${breakdown.unit}</span></div>`;
     });
   }
   html += `<div class="plate-summary-row plate-summary-total"><span>Total</span><span>${total}</span></div>`;
@@ -1392,6 +1395,7 @@ function openPlateSettingsModal() {
   const currentBarbell = getBarbellWeight();
   const denoms = getPlateDenoms();
   const plates = getActivePlates();
+  const visuals = getPlateVisual();
 
   document.getElementById('modal-title').textContent = 'Barbell & Plates';
   document.getElementById('modal-body').innerHTML = `
@@ -1413,9 +1417,11 @@ function openPlateSettingsModal() {
       <div class="plate-list">
         ${denoms.map((d) => {
           const info = plates[d] || { count: 0, unlimited: true };
+          const v = visuals[d] || {};
+          const swatchStyle = `background:${v.color || '#888'};${v.border ? `border:2px solid ${v.border};` : ''}`;
           return `
             <button class="plate-list-row" onclick="openPlateCountModal(${d},true)">
-              <span>${d} ${unit}</span>
+              <span class="plate-swatch-label"><span class="plate-swatch" style="${swatchStyle}"></span>${d} ${unit}</span>
               <span>${info.unlimited ? '∞' : 'x' + info.count}</span>
             </button>
           `;
