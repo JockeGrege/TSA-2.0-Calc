@@ -352,6 +352,11 @@ input[inputmode="decimal"], input[inputmode="numeric"] {
   background: var(--bg-elevated);
 }
 
+.week-item-active {
+  border-color: var(--accent);
+  background: rgba(34, 211, 238, 0.08);
+}
+
 .week-num {
   width: 40px;
   height: 40px;
@@ -377,6 +382,16 @@ input[inputmode="decimal"], input[inputmode="numeric"] {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.week-info-flex {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.week-info-flex h3 {
+  min-width: 0;
 }
 
 .week-info p {
@@ -1057,6 +1072,11 @@ input[inputmode="decimal"], input[inputmode="numeric"] {
 .badge-green {
   background: rgba(74, 222, 128, 0.2);
   color: var(--green);
+}
+
+.badge-accent {
+  background: rgba(34, 211, 238, 0.2);
+  color: var(--accent);
 }
 
 /* Add exercise button */
