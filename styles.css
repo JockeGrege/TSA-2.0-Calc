@@ -1120,10 +1120,13 @@ input[inputmode="decimal"], input[inputmode="numeric"] {
   }
 }
 
-/* Program Table gets a wider layout on desktop, so its many columns
-   fit without needing to scroll sideways - the rest of the app stays
-   phone-width, since it's designed around a single-column card layout. */
-@media (min-width: 900px) {
+/* Program Table gets a wider layout on larger screens (tablets in
+   landscape and up), so its many columns fit without needing to
+   scroll sideways - the rest of the app stays phone-width, since
+   it's designed around a single-column card layout. #app has no
+   explicit width, just max-width, so it still shrinks to fit any
+   viewport narrower than this cap. */
+@media (min-width: 760px) {
   #app.wide-view {
     max-width: 1100px;
   }
