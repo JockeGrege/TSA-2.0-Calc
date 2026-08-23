@@ -128,7 +128,7 @@ const state = {
   progressFilterMode: 'all', // 'all' | 'main' | 'accessory' - session-only, never saved or synced (changed too often to sync)
 
   // RPE Calculator (session-only scratch calculator; never saved or synced)
-  rpeCalc: { weight: '', reps: '', rpe: '', targetReps: 1 },
+  rpeCalc: { weight: '', reps: '', rpe: '', targetReps: 1, roundIncrement: null }, // roundIncrement: null | 1.25 | 2.5
 
   // Auth / cloud sync
   user: null,
@@ -1400,6 +1400,7 @@ function renderRpeCalcResults() {
 
   const unit = getPlateUnit();
   const rows = rpeChartRowsForReps(rc.targetReps, e1rm);
+  const decimals = rc.roundIncrement === 1.25 ? 2 : 1;
 
   return `
     <div class="card-title" style="margin-top:16px;">Estimated 1RM</div>
@@ -1410,14 +1411,32 @@ function renderRpeCalcResults() {
       <div class="choice-row mb-2">
         ${RPE_CALC_REPS_OPTIONS.map((n) => `<button class="choice-btn ${rc.targetReps === n ? 'active' : ''}" onclick="setRpeCalcTargetReps(${n})">${n}</button>`).join('')}
       </div>
+      <div class="form-row mb-2">
+        <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;color:var(--text-muted);">
+          <input type="checkbox" style="width:auto;" ${rc.roundIncrement === 1.25 ? 'checked' : ''} onchange="setRpeCalcRounding(this.checked ? 1.25 : null)" />
+          Round to nearest 1.25
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;color:var(--text-muted);">
+          <input type="checkbox" style="width:auto;" ${rc.roundIncrement === 2.5 ? 'checked' : ''} onchange="setRpeCalcRounding(this.checked ? 2.5 : null)" />
+          Round to nearest 2.5
+        </label>
+      </div>
       <table class="warmup-table">
         <thead><tr><th>RPE</th><th>% of 1RM</th><th>${unit}</th></tr></thead>
         <tbody>
-          ${rows.map((row) => `<tr><td>${row.rpe.toFixed(1)}</td><td>${(row.percent * 100).toFixed(1)}</td><td>${row.weight.toFixed(1)}</td></tr>`).join('')}
+          ${rows.map((row) => {
+            const weight = rc.roundIncrement ? mround(row.weight, rc.roundIncrement) : row.weight;
+            return `<tr><td>${row.rpe.toFixed(1)}</td><td>${(row.percent * 100).toFixed(1)}</td><td>${weight.toFixed(decimals)}</td></tr>`;
+          }).join('')}
         </tbody>
       </table>
     </div>
   `;
+}
+
+function setRpeCalcRounding(value) {
+  state.rpeCalc.roundIncrement = value;
+  refreshRpeCalcResults();
 }
 
 function refreshRpeCalcResults() {
