@@ -845,6 +845,9 @@ function renderProfiles() {
         <button class="btn-icon" style="width:32px;height:32px;flex:none;" onclick="event.stopPropagation();openShareModal('${p.id}')" title="Share (read-only)">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
         </button>
+        <button class="btn-icon" style="width:32px;height:32px;flex:none;" onclick="event.stopPropagation();exportProfileHandler('${p.id}')" title="Export">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
         <button class="btn-icon" style="width:32px;height:32px;flex:none;" onclick="event.stopPropagation();resetProfileHandler('${p.id}')" title="Reset to Default">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 2.64-6.36"/><path d="M3 4v5h5"/></svg>
         </button>
@@ -858,6 +861,7 @@ function renderProfiles() {
   html += `
     <button class="btn btn-primary btn-block mt-4" onclick="openNewProfileModal()">+ New Profile</button>
     <button class="btn btn-secondary btn-block mt-2" onclick="openDuplicateProfileModal()">Duplicate Current Profile</button>
+    <button class="btn btn-secondary btn-block mt-2" onclick="importProfileHandler()">Import Profile from File</button>
     <button class="btn btn-secondary btn-block mt-2" onclick="signOutHandler()">Sign Out</button>
   `;
   mainEl.innerHTML = html;
@@ -1270,6 +1274,125 @@ async function duplicateProfileHandler(name) {
   state.profiles = await window.Firebase.listProfiles(uid);
   showToast('Profile duplicated');
   render();
+}
+
+async function exportProfileHandler(profileId) {
+  const p = state.profiles.find((x) => x.id === profileId);
+  if (!p) return;
+
+  let data;
+  if (profileId === state.profileId) {
+    data = {
+      maxes: state.maxes,
+      rounding: state.rounding,
+      customExercises: state.customExercises,
+      logs: state.logs,
+      plateSettings: state.plateSettings
+    };
+  } else {
+    const remote = await window.Firebase.loadProfileData(state.user.uid, profileId);
+    if (!remote) {
+      showToast('Could not load that profile');
+      return;
+    }
+    data = {
+      maxes: remote.maxes,
+      rounding: remote.rounding,
+      customExercises: remote.customExercises,
+      logs: remote.logs,
+      plateSettings: remote.plateSettings
+    };
+  }
+
+  const exportObj = {
+    schemaVersion: 1,
+    exportedAt: new Date().toISOString(),
+    name: p.name,
+    ...data
+  };
+
+  const json = JSON.stringify(exportObj, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+
+  const safeName = p.name.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'profile';
+  const filename = `tsa-${safeName}-${new Date().toISOString().slice(0, 10)}.json`;
+
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  showToast('Profile exported');
+}
+
+function importProfileHandler() {
+  const input = document.getElementById('import-profile-input');
+  input.value = '';
+  input.click();
+}
+
+function handleImportFileSelected(e) {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    let parsed;
+    try {
+      parsed = JSON.parse(reader.result);
+    } catch (err) {
+      alert('That file is not valid JSON. Please choose a TSA profile export file.');
+      return;
+    }
+    importParsedProfile(parsed);
+  };
+  reader.onerror = () => {
+    alert('Could not read that file. Please try again.');
+  };
+  reader.readAsText(file);
+}
+
+async function importParsedProfile(parsed) {
+  const looksValid = parsed && typeof parsed === 'object' && !Array.isArray(parsed) &&
+    ('maxes' in parsed) && ('logs' in parsed) && ('plateSettings' in parsed);
+  if (!looksValid) {
+    alert('That file does not look like a TSA profile export.');
+    return;
+  }
+
+  const defaults = defaultProfileData();
+  const seed = {
+    maxes: parsed.maxes || defaults.maxes,
+    rounding: typeof parsed.rounding === 'number' ? parsed.rounding : defaults.rounding,
+    customExercises: parsed.customExercises || {},
+    logs: parsed.logs || {},
+    plateSettings: parsed.plateSettings || defaults.plateSettings
+  };
+
+  let name = (typeof parsed.name === 'string' && parsed.name.trim())
+    ? parsed.name.trim() + ' (Imported)'
+    : 'Imported Profile';
+  const existingNames = new Set(state.profiles.map((p) => p.name));
+  if (existingNames.has(name)) {
+    let n = 2;
+    while (existingNames.has(`${name} (${n})`)) n++;
+    name = `${name} (${n})`;
+  }
+
+  try {
+    const uid = state.user.uid;
+    await window.Firebase.createProfile(uid, name, seed);
+    state.profiles = await window.Firebase.listProfiles(uid);
+    showToast(`Imported as "${name}"`);
+    render();
+  } catch (err) {
+    console.error('Import failed', err);
+    alert('Import failed. Please try again.');
+  }
 }
 
 async function resetProfileHandler(profileId) {
@@ -1685,6 +1808,7 @@ document.getElementById('btn-setup').addEventListener('click', goSetup);
 document.getElementById('btn-profile').addEventListener('click', goProfiles);
 document.getElementById('btn-plates').addEventListener('click', goPlates);
 document.getElementById('btn-exit-shared').addEventListener('click', exitSharedView);
+document.getElementById('import-profile-input').addEventListener('change', handleImportFileSelected);
 
 document.getElementById('modal-close').addEventListener('click', closeModal);
 document.getElementById('modal-cancel').addEventListener('click', closeModal);
