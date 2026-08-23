@@ -211,6 +211,15 @@ function estimate1RM(weight, reps, rpe) {
   return Math.round((weight / percent) * 10) / 10;
 }
 
+function rpeColorClass(rpe) {
+  const v = parseFloat(rpe);
+  if (isNaN(v)) return '';
+  if (v < 6) return 'rpe-green';
+  if (v < 8) return 'rpe-yellow';
+  if (v < 9.5) return 'rpe-orange';
+  return 'rpe-red';
+}
+
 function mround(value, multiple) {
   if (!multiple || multiple <= 0) return value;
   return Math.round(value / multiple) * multiple;
@@ -571,7 +580,7 @@ function renderTableViewDayTable(week, dayIdx, day) {
         <td>${load != null ? load : '—'}</td>
         <td class="col-logged">${log.weightUsed || '—'}</td>
         <td class="col-logged">${log.repsDone || '—'}</td>
-        <td class="col-logged">${log.rpe || '—'}</td>
+        <td class="col-logged">${log.rpe ? `<span class="badge ${rpeColorClass(log.rpe)}">${log.rpe}</span>` : '—'}</td>
       </tr>
     `;
   });
@@ -675,7 +684,7 @@ function renderDay() {
           <div class="meta-item"><strong>${ex.reps || '—'}</strong> reps</div>
           ${ex.intensity ? `<div class="meta-item">${ex.intensity}</div>` : ''}
           ${load != null ? `<div class="load-badge has-plate-toggle" onclick="togglePlateBreakdown('main-${logKey}')">${load}${renderPlateToggleButton(`main-${logKey}`)}</div>` : ''}
-          ${ex.type === 'rpe' && ex.rpe ? `<div class="load-badge rpe-badge">@RPE ${ex.rpe}</div>` : ''}
+          ${ex.type === 'rpe' && ex.rpe ? `<div class="load-badge rpe-badge ${rpeColorClass(ex.rpe)}">@RPE ${ex.rpe}</div>` : ''}
         </div>
         ${load != null && state.plateBreakdownOpen[`main-${logKey}`] ? renderPlateInlineDetail(load) : ''}
         ${isMain && load != null ? renderWarmupBlock(week, dayIdx, exIdx, load) : ''}
@@ -699,9 +708,11 @@ function renderDay() {
           <div>
             <label>RPE</label>
             ${state.readOnly
-              ? `<p class="log-readonly-value">${log.rpe || '—'}</p>`
+              ? `<p class="log-readonly-value ${rpeColorClass(log.rpe)}">${log.rpe || '—'}</p>`
               : `<input type="text" inputmode="decimal" step="0.5" placeholder="—"
+              class="${rpeColorClass(log.rpe)}"
               value="${log.rpe || ''}"
+              oninput="this.className = rpeColorClass(this.value)"
               onchange="saveLog(${week},${dayIdx},${exIdx},'rpe',this.value)" />`}
           </div>
         </div>

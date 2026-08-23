@@ -13,6 +13,7 @@
   --danger: #f87171;
   --yellow: #facc15;
   --green: #4ade80;
+  --orange: #fb923c;
   --border: #334155;
   --radius: 12px;
   --radius-sm: 8px;
@@ -537,9 +538,68 @@ input[inputmode="decimal"], input[inputmode="numeric"] {
   cursor: pointer;
 }
 
-.rpe-badge {
-  background: rgba(251, 191, 36, 0.15);
-  color: var(--warning);
+.rpe-green {
+  background: rgba(74, 222, 128, 0.2);
+  color: var(--green);
+}
+
+.rpe-yellow {
+  background: rgba(250, 204, 21, 0.2);
+  color: var(--yellow);
+}
+
+.rpe-orange {
+  background: rgba(251, 146, 60, 0.2);
+  color: var(--orange);
+}
+
+.rpe-red {
+  background: rgba(248, 113, 113, 0.2);
+  color: var(--danger);
+}
+
+input.rpe-green {
+  background: rgba(74, 222, 128, 0.12);
+  border-color: var(--green);
+}
+
+input.rpe-yellow {
+  background: rgba(250, 204, 21, 0.12);
+  border-color: var(--yellow);
+}
+
+input.rpe-orange {
+  background: rgba(251, 146, 60, 0.12);
+  border-color: var(--orange);
+}
+
+input.rpe-red {
+  background: rgba(248, 113, 113, 0.12);
+  border-color: var(--danger);
+}
+
+.log-readonly-value.rpe-green {
+  background: rgba(74, 222, 128, 0.08);
+  border-color: rgba(74, 222, 128, 0.3);
+  color: var(--green);
+}
+
+.log-readonly-value.rpe-yellow {
+  background: rgba(250, 204, 21, 0.08);
+  border-color: rgba(250, 204, 21, 0.4);
+  color: var(--yellow);
+}
+
+.log-readonly-value.rpe-orange {
+  background: rgba(251, 146, 60, 0.08);
+  border-color: rgba(251, 146, 60, 0.4);
+  color: var(--orange);
+}
+
+.log-readonly-value.rpe-red {
+  background: rgba(248, 113, 113, 0.08);
+  border-color: rgba(248, 113, 113, 0.4);
+  color: var(--danger);
 }
 
 .warmup-weight-cell {
