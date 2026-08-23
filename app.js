@@ -247,7 +247,7 @@ function rpeChartRowsForReps(reps, e1rm) {
     .map((rpeKey) => ({
       rpe: parseFloat(rpeKey),
       percent: RPE_CHART[rpeKey][idx],
-      weight: e1rm ? mround(e1rm * RPE_CHART[rpeKey][idx], state.rounding) : null,
+      weight: e1rm ? Math.round(e1rm * RPE_CHART[rpeKey][idx] * 10) / 10 : null,
     }))
     .sort((a, b) => b.rpe - a.rpe);
 }
@@ -703,7 +703,6 @@ const headerTitle = document.getElementById('header-title');
 const btnBack = document.getElementById('btn-back');
 const btnSetup = document.getElementById('btn-setup');
 const btnProfile = document.getElementById('btn-profile');
-const btnRpeInfo = document.getElementById('btn-rpe-info');
 const headerTools = document.getElementById('header-tools');
 const bottomNav = document.getElementById('bottom-nav');
 const sharedBanner = document.getElementById('shared-banner');
@@ -721,7 +720,6 @@ function render() {
     btnBack.classList.add('hidden');
     btnSetup.classList.add('hidden');
     btnProfile.classList.add('hidden');
-    btnRpeInfo.classList.add('hidden');
     headerTools.classList.add('hidden');
     syncIndicator.classList.add('hidden');
     bottomNav.classList.add('hidden');
@@ -737,7 +735,6 @@ function render() {
   btnBack.classList.toggle('hidden', state.view === 'home' || state.view === 'auth');
   btnSetup.classList.toggle('hidden', state.view === 'auth' || state.readOnly);
   btnProfile.classList.toggle('hidden', state.view === 'auth' || state.readOnly);
-  btnRpeInfo.classList.toggle('hidden', state.view !== 'rpe-calc');
   headerTools.classList.toggle('hidden', state.view === 'auth');
   setSyncStatus(state.syncStatus);
   bottomNav.classList.add('hidden');
@@ -1388,6 +1385,7 @@ function renderRpeCalc() {
       </div>
     </div>
     <div id="rpe-calc-results">${renderRpeCalcResults()}</div>
+    <button class="link-btn mt-2" onclick="openRpeInfoModal()">About the RPE Calculator</button>
   `;
   mainEl.innerHTML = html;
 }
@@ -1415,7 +1413,7 @@ function renderRpeCalcResults() {
       <table class="warmup-table">
         <thead><tr><th>RPE</th><th>% of 1RM</th><th>${unit}</th></tr></thead>
         <tbody>
-          ${rows.map((row) => `<tr><td>${row.rpe.toFixed(1)}</td><td>${(row.percent * 100).toFixed(1)}</td><td>${row.weight}</td></tr>`).join('')}
+          ${rows.map((row) => `<tr><td>${row.rpe.toFixed(1)}</td><td>${(row.percent * 100).toFixed(1)}</td><td>${row.weight.toFixed(1)}</td></tr>`).join('')}
         </tbody>
       </table>
     </div>
@@ -2504,7 +2502,6 @@ document.getElementById('btn-profile').addEventListener('click', goProfiles);
 document.getElementById('btn-plates').addEventListener('click', goPlates);
 document.getElementById('btn-progress').addEventListener('click', goProgress);
 document.getElementById('btn-rpe').addEventListener('click', goRpeCalc);
-document.getElementById('btn-rpe-info').addEventListener('click', openRpeInfoModal);
 document.getElementById('btn-exit-shared').addEventListener('click', exitSharedView);
 document.getElementById('import-profile-input').addEventListener('change', handleImportFileSelected);
 

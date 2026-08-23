@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'tsa-shell-v29';
+const CACHE_VERSION = 'tsa-shell-v30';
 
 const APP_SHELL = [
   './',
