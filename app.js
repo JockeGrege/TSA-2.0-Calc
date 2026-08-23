@@ -37,7 +37,7 @@ const WARMUP_SCHEMES = {
       { percentLabel: '65', percent: 0.65, reps: '5', rest: '2 minutes' },
       { percentLabel: '78', percent: 0.78, reps: '3', rest: '2 minutes' },
       { percentLabel: '88', percent: 0.88, reps: '2', rest: '3 minutes' },
-      { percentLabel: '96', percent: 0.96, reps: '1', rest: '3 minutes' }
+      { percentLabel: '95', percent: 0.95, reps: '1', rest: '3 minutes' }
     ]
   },
   fast: {
