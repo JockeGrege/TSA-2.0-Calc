@@ -49,7 +49,45 @@ Most modern browsers allow opening `index.html` directly, but `fetch` for the JS
 - Program structure extracted from the official LiftVault / TSA spreadsheet.
 
 ## Firebase setup (for developers)
-This app expects a Firebase project with Authentication (Email/Password + Google) and Firestore enabled. See `firebase-config.js` for where to put your project's config, and `firestore.rules` for the security rules (profile reads are allowed for the owner or any authenticated user whose email is listed in that profile's `viewerEmails`; writes remain owner-only). Deploy rules with `firebase deploy --only firestore:rules` (requires `firebase-tools`, e.g. `npm install --no-save firebase-tools`).
+This app needs its own Firebase project with Authentication and Firestore enabled. To set one up from scratch:
+
+1. **Create a project.** Go to the [Firebase Console](https://console.firebase.google.com/), click **Add project**, and follow the prompts (Google Analytics is optional, not used by this app).
+
+2. **Register a Web App.** In the project's Overview page, click the **Web** (`</>`) icon to add a web app. Give it a nickname (Firebase Hosting setup can be skipped unless you plan to use it). Firebase will show a `firebaseConfig` object — copy its values into `firebase-config.js` at the repo root:
+   ```js
+   window.FIREBASE_CONFIG = {
+     apiKey: "...",
+     authDomain: "...",
+     projectId: "...",
+     storageBucket: "...",
+     messagingSenderId: "...",
+     appId: "..."
+   };
+   ```
+   This file is loaded as a plain script before the Firebase SDK, so no build step or environment variables are needed. The values here aren't secret — access is controlled by the Firestore rules below, not by hiding this file.
+
+3. **Enable sign-in providers.** In the console, go to **Authentication → Sign-in method** and enable both:
+   - **Email/Password**
+   - **Google**
+
+4. **Authorize your domain(s).** Still under Authentication, go to **Settings → Authorized domains** and add every domain the app will actually be served from (e.g. your GitHub Pages domain). `localhost` is included by default, which covers local development. Google sign-in's popup flow will fail with an `unauthorized-domain` error on any domain not in this list.
+
+5. **Create the Firestore database.** Go to **Firestore Database → Create database**, choose **Production mode** (the security rules in this repo — not the default-deny production rules — are what actually govern access), and pick a region.
+
+6. **Deploy the security rules.** Install the CLI (`npm install --no-save firebase-tools`), then:
+   ```bash
+   npx firebase login
+   npx firebase use --add        # select your project, e.g. as the "default" alias
+   npx firebase deploy --only firestore:rules
+   ```
+   `firestore.rules` allows a profile to be read by its owner or by any signed-in user whose email is listed in that profile's `viewerEmails` (the coach-sharing feature); writes remain owner-only. `firestore.indexes.json` is empty — this app doesn't need any composite indexes.
+
+7. **(Optional) Firebase Hosting.** `firebase.json` already declares a hosting config pointing at the repo root, if you'd rather deploy there than to GitHub Pages: `npx firebase deploy --only hosting`.
+
+8. **(Recommended) Restrict the API key.** `firebase-config.js` is committed to the repo and its `apiKey` is visible to anyone — this is normal for Firebase web apps and isn't itself a vulnerability (it doesn't grant data access; the Firestore rules above are what actually do that). As an extra guardrail against quota abuse, restrict the key in the [Google Cloud Console](https://console.cloud.google.com/) (Firebase projects are Google Cloud projects, so this is the same project): **APIs & Services → Credentials**, open the key (usually named something like "Browser key (auto created by Firebase)"), then:
+   - Under **Application restrictions**, choose **HTTP referrers** and add every domain the app is served from, e.g. `https://yourusername.github.io/*` and `http://localhost:8080/*`.
+   - Under **API restrictions**, choose **Restrict key** and select only what this app actually calls: **Identity Toolkit API**, **Token Service API**, **Cloud Firestore API**, and **Firebase Installations API**.
+   - Save, then re-test sign-in (email/password and Google) on every domain you added. If something breaks, the browser console error will name the specific API to add back.
 
 ## Offline app shell
 `sw.js` caches the app shell (HTML/CSS/JS + the Firebase SDK) so a cold start works with no connection. There's no build step to hash filenames automatically, so bump `CACHE_VERSION` in `sw.js` by hand whenever any cached file changes — otherwise visitors keep getting the stale cached version.
