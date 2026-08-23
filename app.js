@@ -1036,6 +1036,7 @@ function renderDay() {
           </div>
           `}
         </div>
+        ${ex.note ? `<div class="exercise-note">${ex.note}</div>` : ''}
         <div class="exercise-meta">
           <div class="meta-item"><strong>${ex.sets || '—'}</strong> sets</div>
           <div class="meta-item"><strong>${ex.reps || '—'}</strong> reps</div>
@@ -1947,6 +1948,10 @@ function openEditModal(week, dayIdx, exIdx) {
       <input type="text" id="edit-intensity" value="${ex.intensity || ''}" />
     </div>
     <div class="form-group">
+      <label>Note (equipment, etc.)</label>
+      <input type="text" id="edit-note" placeholder="e.g. trap bar, close grip" value="${ex.note || ''}" />
+    </div>
+    <div class="form-group">
       <label>Lift for load calc (optional)</label>
       <select id="edit-lift">
         <option value="" ${!ex.lift ? 'selected' : ''}>None (accessory)</option>
@@ -2009,6 +2014,10 @@ function openAddModal(week, dayIdx) {
     <div class="form-group">
       <label>Intensity (e.g. RPE 7)</label>
       <input type="text" id="edit-intensity" placeholder="RPE 7" value="RPE 7" />
+    </div>
+    <div class="form-group">
+      <label>Note (equipment, etc.)</label>
+      <input type="text" id="edit-note" placeholder="e.g. trap bar, close grip" />
     </div>
     <div class="form-group">
       <label>Lift for load calc (optional)</label>
@@ -2102,6 +2111,7 @@ function saveModal() {
   const sets = document.getElementById('edit-sets').value.trim();
   const reps = document.getElementById('edit-reps').value.trim();
   const intensity = document.getElementById('edit-intensity').value.trim();
+  const note = document.getElementById('edit-note').value.trim();
   const lift = document.getElementById('edit-lift').value || null;
   const type = document.getElementById('edit-type').value;
   let percent = null;
@@ -2128,7 +2138,7 @@ function saveModal() {
     trackedId = trackedSel;
   }
 
-  const newEx = { name, sets, reps, intensity, type, lift, percent, rpe, trackedId };
+  const newEx = { name, sets, reps, intensity, note, type, lift, percent, rpe, trackedId };
 
   let exercises = getExercises(week, dayIdx);
 
