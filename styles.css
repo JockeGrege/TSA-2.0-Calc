@@ -16,6 +16,12 @@
   --orange: #fb923c;
   --chart-indigo: #818cf8;
   --chart-magenta: #f472b6;
+  --chart-teal: #2dd4bf;
+  --chart-blue: #60a5fa;
+  --chart-purple: #c084fc;
+  --chart-lime: #a3e635;
+  --chart-stone: #a8a29e;
+  --chart-fuchsia: #c026d3;
   --border: #334155;
   --radius: 12px;
   --radius-sm: 8px;
@@ -1103,6 +1109,11 @@ input.rpe-red {
   font-family: var(--mono);
   font-weight: 600;
   color: var(--text);
+}
+
+.chart-legend-item.inactive {
+  opacity: 0.45;
+  text-decoration: line-through;
 }
 
 /* Modal */
