@@ -1232,7 +1232,8 @@ function renderShareModalBody() {
     </div>
     <div class="form-group">
       <label>Share link</label>
-      <button class="btn btn-secondary btn-block" onclick="copyShareLink()">Copy Link</button>
+      <button class="btn btn-secondary btn-block" onclick="copyShareLink()" ${emails.length === 0 ? 'disabled' : ''}>Copy Link</button>
+      ${emails.length === 0 ? '<p class="note" style="margin-top:6px;">Add a coach\'s email above first — the link only works for people listed here.</p>' : ''}
     </div>
   `;
 }

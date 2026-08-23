@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'tsa-shell-v15';
+const CACHE_VERSION = 'tsa-shell-v16';
 const APP_SHELL = [
   './',
   './index.html',
