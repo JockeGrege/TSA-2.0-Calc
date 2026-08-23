@@ -26,7 +26,7 @@ A mobile-first progressive web app for the **TSA Intermediate Approach 2.0** (9-
 - All customizations and logs persist per profile and sync to your account.
 
 ### Mobile/touch
-Designed for one-handed phone use: large tap targets throughout (the whole load/weight badge is tappable, not just the icon), an easy-to-hit "Unlimited" checkbox, and numeric inputs that select their existing value on focus so you can immediately type a replacement.
+Designed for one-handed phone use: large tap targets throughout (the whole load/weight badge is tappable, not just the icon), an easy-to-hit "Unlimited" checkbox, and numeric inputs that select their existing value on focus so you can immediately type a replacement. On Android, the hardware/gesture back button navigates within the app (closing an open modal first, then stepping back through screens) instead of exiting straight away.
 
 ## How to run
 
