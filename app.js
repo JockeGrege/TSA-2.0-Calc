@@ -713,7 +713,8 @@ function renderAuth() {
 }
 
 function renderProfiles() {
-  let html = `<div class="week-list">`;
+  let html = `<p class="note" style="margin-bottom:12px;">Signed in as ${state.user.email}</p>`;
+  html += `<div class="week-list">`;
   state.profiles.forEach((p) => {
     const active = p.id === state.profileId;
     html += `
