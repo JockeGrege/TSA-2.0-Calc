@@ -133,6 +133,12 @@ const state = {
 // ========== PERSISTENCE ==========
 const STORAGE_KEY = 'tsa9week_v1';
 let cloudSaveTimer = null;
+// Tracks whether our own outgoing write is still in flight, so a late-arriving
+// snapshot echo of an OLDER write can't clobber a newer local change (e.g. an
+// edit followed shortly by a reset, on a large profile where the round trip
+// for the edit's write is slower than the gap between the two actions).
+let saveEpoch = 0;
+let confirmedEpoch = 0;
 
 function saveState() {
   const toSave = {
@@ -147,10 +153,15 @@ function saveState() {
   if (state.user && state.profileId) {
     setSyncStatus('syncing');
     clearTimeout(cloudSaveTimer);
+    const myEpoch = ++saveEpoch;
     cloudSaveTimer = setTimeout(() => {
       window.Firebase.saveProfileData(state.user.uid, state.profileId, toSave)
-        .then(() => setSyncStatus('synced'))
+        .then(() => {
+          confirmedEpoch = myEpoch;
+          setSyncStatus('synced');
+        })
         .catch((e) => {
+          confirmedEpoch = myEpoch;
           console.warn('Cloud sync failed', e);
           setSyncStatus(navigator.onLine ? 'error' : 'offline');
         });
@@ -982,6 +993,11 @@ async function applyProfileData(profileId) {
 function subscribeToProfile(profileId) {
   if (state.profileUnsubscribe) state.profileUnsubscribe();
   state.profileUnsubscribe = window.Firebase.watchCurrentProfile(state.user.uid, profileId, (data) => {
+    // A local write is still queued or in flight (saveEpoch ahead of confirmedEpoch) - this
+    // snapshot can only be a stale echo of an older write, so applying it would clobber a
+    // newer local change (e.g. an edit immediately followed by a reset). Skip it; once our
+    // own pending write confirms, the next snapshot will correctly reflect it.
+    if (confirmedEpoch < saveEpoch) return;
     const active = document.activeElement;
     const isEditingInput = active && mainEl.contains(active) && (active.tagName === 'INPUT' || active.tagName === 'SELECT');
     if (data.maxes) state.maxes = data.maxes;

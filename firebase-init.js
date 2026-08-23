@@ -146,10 +146,15 @@ async function loadProfileData(uid, profileId) {
 }
 
 async function saveProfileData(uid, profileId, data) {
+  // mergeFields (not a plain {merge: true}) so each top-level field - customExercises,
+  // logs, etc. - is REPLACED wholesale. A plain merge:true recursively merges into nested
+  // map fields, silently preserving any subkey (e.g. a deleted day's exercise override)
+  // that isn't present in the new value, since Firestore has no way to distinguish
+  // "delete this subkey" from "I just didn't mention it" without an explicit deleteField().
   await setDoc(
     profileDocRef(uid, profileId),
     { ...data, updatedAt: serverTimestamp() },
-    { merge: true }
+    { mergeFields: [...Object.keys(data), 'updatedAt'] }
   );
 }
 
