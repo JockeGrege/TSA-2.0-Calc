@@ -114,8 +114,6 @@ const state = {
 
   // Tracked-lift registry for accessory-lift progress charting (persisted, synced like maxes/rounding)
   trackedLifts: {}, // id -> { label, color }
-  // Persistent Progress-view category filter (persisted, synced like maxes/rounding)
-  progressFilterMode: 'all', // 'all' | 'main' | 'accessory'
 
   // Warmup calculator (session-only; never saved or synced)
   warmups: {}, // "week-dayIdx-exIdx" -> { scheme, targetWeight, expanded }
@@ -126,6 +124,7 @@ const state = {
   tableViewWeek: null, // null = all 9 weeks, 1-9 = a single week, in the Program Table view
   openProfileMenuId: null, // id of the profile row whose "more actions" menu is open, if any
   progressHiddenLifts: {}, // key -> boolean, session-only per-lift chart visibility toggle in Progress view
+  progressFilterMode: 'all', // 'all' | 'main' | 'accessory' - session-only, never saved or synced (changed too often to sync)
 
   // Auth / cloud sync
   user: null,
@@ -160,8 +159,7 @@ function saveState() {
     customExercises: state.customExercises,
     logs: state.logs,
     plateSettings: state.plateSettings,
-    trackedLifts: state.trackedLifts,
-    progressFilterMode: state.progressFilterMode
+    trackedLifts: state.trackedLifts
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
 
@@ -473,8 +471,7 @@ function getProgressCandidates() {
 
 function setProgressFilterMode(mode) {
   state.progressFilterMode = mode;
-  saveState();
-  render();
+  render(); // session-only - not persisted, to avoid a Firestore write on every toggle
 }
 
 function toggleProgressLiftActive(key) {
@@ -1006,7 +1003,7 @@ function renderDay() {
               ? `<p class="log-readonly-value">${log.weightUsed || '—'}</p>`
               : `<input type="text" inputmode="decimal" placeholder="—"
               value="${log.weightUsed || ''}"
-              onchange="saveLog(${week},${dayIdx},${exIdx},'weightUsed',this.value)" />`}
+              onchange="this.value = saveLog(${week},${dayIdx},${exIdx},'weightUsed',this.value)" />`}
           </div>
           <div>
             <label>Reps Done</label>
@@ -1014,7 +1011,7 @@ function renderDay() {
               ? `<p class="log-readonly-value">${log.repsDone || '—'}</p>`
               : `<input type="text" inputmode="numeric" placeholder="—"
               value="${log.repsDone || ''}"
-              onchange="saveLog(${week},${dayIdx},${exIdx},'repsDone',this.value)" />`}
+              onchange="this.value = saveLog(${week},${dayIdx},${exIdx},'repsDone',this.value)" />`}
           </div>
           <div>
             <label>RPE</label>
@@ -1024,7 +1021,7 @@ function renderDay() {
               class="${rpeColorClass(log.rpe)}"
               value="${log.rpe || ''}"
               oninput="this.className = rpeColorClass(this.value)"
-              onchange="saveLog(${week},${dayIdx},${exIdx},'rpe',this.value)" />`}
+              onchange="this.value = saveLog(${week},${dayIdx},${exIdx},'rpe',this.value); this.className = rpeColorClass(this.value);" />`}
           </div>
         </div>
       </div>
@@ -1362,8 +1359,7 @@ function defaultProfileData() {
     customExercises: {},
     logs: {},
     plateSettings: defaultPlateSettings(),
-    trackedLifts: {},
-    progressFilterMode: 'all'
+    trackedLifts: {}
   };
 }
 
@@ -1377,7 +1373,6 @@ function resetAllData() {
     state.logs = defaults.logs;
     state.plateSettings = defaults.plateSettings;
     state.trackedLifts = defaults.trackedLifts;
-    state.progressFilterMode = defaults.progressFilterMode;
     if (state.user && state.profileId) {
       window.Firebase.saveProfileData(state.user.uid, state.profileId, defaults)
         .catch((e) => console.warn('Cloud reset failed', e));
@@ -1450,7 +1445,6 @@ async function applyProfileData(profileId) {
     if (data.logs) state.logs = data.logs;
     if (data.plateSettings) state.plateSettings = data.plateSettings;
     state.trackedLifts = data.trackedLifts || {};
-    state.progressFilterMode = data.progressFilterMode || 'all';
   }
 }
 
@@ -1470,7 +1464,6 @@ function subscribeToProfile(profileId) {
     if (data.logs) state.logs = data.logs;
     if (data.plateSettings) state.plateSettings = data.plateSettings;
     state.trackedLifts = data.trackedLifts || {};
-    state.progressFilterMode = data.progressFilterMode || 'all';
     if (!isEditingInput) render();
   });
 }
@@ -1637,8 +1630,7 @@ async function exportProfileHandler(profileId) {
       customExercises: state.customExercises,
       logs: state.logs,
       plateSettings: state.plateSettings,
-      trackedLifts: state.trackedLifts,
-      progressFilterMode: state.progressFilterMode
+      trackedLifts: state.trackedLifts
     };
   } else {
     const remote = await window.Firebase.loadProfileData(state.user.uid, profileId);
@@ -1652,8 +1644,7 @@ async function exportProfileHandler(profileId) {
       customExercises: remote.customExercises,
       logs: remote.logs,
       plateSettings: remote.plateSettings,
-      trackedLifts: remote.trackedLifts,
-      progressFilterMode: remote.progressFilterMode
+      trackedLifts: remote.trackedLifts
     };
   }
 
@@ -1724,10 +1715,7 @@ async function importParsedProfile(parsed) {
     customExercises: parsed.customExercises || {},
     logs: parsed.logs || {},
     plateSettings: parsed.plateSettings || defaults.plateSettings,
-    trackedLifts: parsed.trackedLifts || {},
-    progressFilterMode: ['all', 'main', 'accessory'].includes(parsed.progressFilterMode)
-      ? parsed.progressFilterMode
-      : defaults.progressFilterMode
+    trackedLifts: parsed.trackedLifts || {}
   };
 
   let name = (typeof parsed.name === 'string' && parsed.name.trim())
@@ -1768,7 +1756,6 @@ async function resetProfileHandler(profileId) {
     state.logs = defaults.logs;
     state.plateSettings = defaults.plateSettings;
     state.trackedLifts = defaults.trackedLifts;
-    state.progressFilterMode = defaults.progressFilterMode;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(defaults));
   }
   showToast('Profile reset to default');
@@ -1801,11 +1788,39 @@ async function deleteProfileHandler(profileId) {
 }
 
 // ========== LOGGING ==========
+function sanitizeNonNegativeDecimal(value) {
+  if (value == null || value === '') return '';
+  const num = parseFloat(String(value).replace(/[^0-9.\-]/g, ''));
+  if (isNaN(num)) return '';
+  return String(Math.max(0, num));
+}
+
+function sanitizeNonNegativeInt(value) {
+  if (value == null || value === '') return '';
+  const num = parseFloat(String(value).replace(/[^0-9.\-]/g, ''));
+  if (isNaN(num)) return '';
+  return String(Math.max(0, Math.trunc(num)));
+}
+
+function sanitizeRPEValue(value) {
+  if (value == null || value === '') return '';
+  const num = parseFloat(String(value).replace(/[^0-9.\-]/g, ''));
+  if (isNaN(num)) return '';
+  return String(Math.min(10, Math.max(1, num)));
+}
+
 function saveLog(week, dayIdx, exIdx, field, value) {
+  let sanitized;
+  if (field === 'weightUsed') sanitized = sanitizeNonNegativeDecimal(value);
+  else if (field === 'repsDone') sanitized = sanitizeNonNegativeInt(value);
+  else if (field === 'rpe') sanitized = sanitizeRPEValue(value);
+  else sanitized = value;
+
   const key = getLogKey(week, dayIdx, exIdx);
   if (!state.logs[key]) state.logs[key] = {};
-  state.logs[key][field] = value;
+  state.logs[key][field] = sanitized;
   saveState();
+  return sanitized;
 }
 
 function clearExerciseLog(week, dayIdx, exIdx) {
@@ -2315,7 +2330,6 @@ function applySharedProfileData(data) {
   state.logs = data.logs || {};
   if (data.plateSettings) state.plateSettings = data.plateSettings;
   state.trackedLifts = data.trackedLifts || {};
-  state.progressFilterMode = data.progressFilterMode || 'all';
   render();
 }
 

@@ -37,7 +37,6 @@ const DEFAULT_PROFILE_DATA = {
   customExercises: {},
   logs: {},
   trackedLifts: {},
-  progressFilterMode: 'all',
   viewerEmails: [],
   plateSettings: {
     barbellKg: 20,
