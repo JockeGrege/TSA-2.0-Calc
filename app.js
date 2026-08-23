@@ -801,21 +801,21 @@ function renderSetup() {
         <label>${lift.label}</label>
         <div class="form-row">
           <div>
-            <input type="text" inputmode="decimal" placeholder="Weight" 
-              value="${m.weight || ''}" 
-              onchange="updateMax('${lift.key}','weight',this.value)"
+            <input type="text" inputmode="decimal" placeholder="Weight"
+              value="${m.weight || ''}"
+              onchange="this.value = updateMax('${lift.key}','weight',this.value)"
               oninput="updateMax('${lift.key}','weight',this.value)" />
           </div>
           <div>
-            <input type="text" inputmode="numeric" placeholder="Reps" 
-              value="${m.reps || ''}" 
-              onchange="updateMax('${lift.key}','reps',this.value)"
+            <input type="text" inputmode="numeric" placeholder="Reps"
+              value="${m.reps || ''}"
+              onchange="this.value = updateMax('${lift.key}','reps',this.value)"
               oninput="updateMax('${lift.key}','reps',this.value)" />
           </div>
           <div>
-            <input type="text" inputmode="decimal" placeholder="RPE" step="0.5" min="6.5" max="10"
-              value="${m.rpe || ''}" 
-              onchange="updateMax('${lift.key}','rpe',this.value)"
+            <input type="text" inputmode="decimal" placeholder="RPE" step="0.5" min="1" max="10"
+              value="${m.rpe || ''}"
+              onchange="this.value = updateMax('${lift.key}','rpe',this.value)"
               oninput="updateMax('${lift.key}','rpe',this.value)" />
           </div>
         </div>
@@ -1334,13 +1334,20 @@ function goTable(week) {
 
 // ========== SETUP HANDLERS ==========
 function updateMax(lift, field, value) {
-  state.maxes[lift][field] = value;
+  let sanitized;
+  if (field === 'weight') sanitized = sanitizeNonNegativeDecimal(value);
+  else if (field === 'reps') sanitized = sanitizeNonNegativeInt(value);
+  else if (field === 'rpe') sanitized = sanitizeRPEValue(value);
+  else sanitized = value;
+
+  state.maxes[lift][field] = sanitized;
   updateE1RMs();
   const el = document.getElementById(`e1rm-${lift}`);
   if (el) {
     el.textContent = state.maxes[lift].e1rm ? `e1RM ≈ ${state.maxes[lift].e1rm}` : '—';
   }
   saveState();
+  return sanitized;
 }
 
 function updateRounding(val) {
