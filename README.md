@@ -19,7 +19,7 @@ A mobile-first progressive web app for the **TSA Intermediate Approach 2.0** (9-
 - **Share with a coach**: Grant read-only access to a profile by adding a coach's email. The coach signs in with their own account and sees your maxes, logs, and the Program Table exactly as you do, but can't edit anything. Access is enforced server-side (Firestore security rules), not just hidden in the UI. The share link only works once at least one email has been added.
 
 ### Customization
-- **Edit any exercise**: Change name, sets, reps, intensity, type (percentage / RPE / other), and which 1RM it references.
+- **Edit any exercise**: Change name, sets, reps, intensity, type (percentage / RPE / other), which 1RM it references, and a free-text note (e.g. equipment used) shown in small text under the exercise name.
 - **Add accessory movements**: Name them, set sets/reps/RPE, etc.
 - **Remove exercises**.
 - **Reset individual days** back to the original program template.

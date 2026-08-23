@@ -508,6 +508,13 @@ input[inputmode="decimal"], input[inputmode="numeric"] {
   gap: 4px;
 }
 
+.exercise-note {
+  font-size: 0.8rem;
+  font-style: italic;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
 .exercise-meta {
   display: flex;
   flex-wrap: wrap;
