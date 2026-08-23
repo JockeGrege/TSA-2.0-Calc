@@ -36,6 +36,7 @@ const DEFAULT_PROFILE_DATA = {
   rounding: 2.5,
   customExercises: {},
   logs: {},
+  viewerEmails: [],
   plateSettings: {
     barbellKg: 20,
     barbellLb: 45,
@@ -158,6 +159,14 @@ async function saveProfileData(uid, profileId, data) {
   );
 }
 
+async function setViewerEmails(uid, profileId, emails) {
+  await setDoc(
+    profileDocRef(uid, profileId),
+    { viewerEmails: emails, updatedAt: serverTimestamp() },
+    { mergeFields: ['viewerEmails', 'updatedAt'] }
+  );
+}
+
 function watchCurrentProfile(uid, profileId, callback) {
   return onSnapshot(profileDocRef(uid, profileId), (snap) => {
     if (snap.exists()) callback(snap.data());
@@ -211,6 +220,7 @@ window.Firebase = {
   deleteProfile,
   loadProfileData,
   saveProfileData,
+  setViewerEmails,
   watchCurrentProfile,
   importLegacyLocalStorageIfNeeded
 };

@@ -127,7 +127,12 @@ const state = {
   profileId: null,
   profiles: [], // [{ id, name }]
   profileUnsubscribe: null,
-  syncStatus: 'synced' // 'synced' | 'syncing' | 'offline' | 'error'
+  syncStatus: 'synced', // 'synced' | 'syncing' | 'offline' | 'error'
+
+  // Read-only coach view: set when opening a ?shareUid=&shareProfile= link.
+  // While set, we never write - we're viewing someone else's profile, not our own.
+  readOnly: false,
+  sharedView: null // { uid, profileId, ownerName } or null
 };
 
 // ========== PERSISTENCE ==========
@@ -325,6 +330,8 @@ const btnSetup = document.getElementById('btn-setup');
 const btnProfile = document.getElementById('btn-profile');
 const btnPlates = document.getElementById('btn-plates');
 const bottomNav = document.getElementById('bottom-nav');
+const sharedBanner = document.getElementById('shared-banner');
+const sharedBannerText = document.getElementById('shared-banner-text');
 
 function showToast(msg, duration = 2000) {
   const toast = document.getElementById('toast');
@@ -350,11 +357,13 @@ function render() {
 
   updateE1RMs();
   btnBack.classList.toggle('hidden', state.view === 'home' || state.view === 'auth');
-  btnSetup.classList.toggle('hidden', state.view === 'auth');
-  btnProfile.classList.toggle('hidden', state.view === 'auth');
+  btnSetup.classList.toggle('hidden', state.view === 'auth' || state.readOnly);
+  btnProfile.classList.toggle('hidden', state.view === 'auth' || state.readOnly);
   btnPlates.classList.toggle('hidden', state.view === 'auth');
   setSyncStatus(state.syncStatus);
   bottomNav.classList.add('hidden');
+  sharedBanner.classList.toggle('hidden', !state.readOnly || state.view === 'auth');
+  if (state.readOnly) sharedBannerText.textContent = `Viewing "${state.sharedView.profileName}" (read-only)`;
 
   const activeProfile = state.profiles.find((p) => p.id === state.profileId);
   btnProfile.title = activeProfile ? `Profiles (${activeProfile.name})` : 'Profiles';
@@ -565,11 +574,13 @@ function renderDay() {
       <div class="exercise ${isMain ? 'main-lift' : 'accessory'}">
         <div class="exercise-header">
           <div class="exercise-name">${ex.name}</div>
+          ${state.readOnly ? '' : `
           <div class="exercise-actions">
             <button class="btn-icon" style="width:32px;height:32px;" onclick="openEditModal(${week},${dayIdx},${exIdx})" title="Edit">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
             </button>
           </div>
+          `}
         </div>
         <div class="exercise-meta">
           <div class="meta-item"><strong>${ex.sets || '—'}</strong> sets</div>
@@ -583,33 +594,41 @@ function renderDay() {
         <div class="log-row">
           <div>
             <label>Weight Used</label>
-            <input type="text" inputmode="decimal" placeholder="—" 
+            ${state.readOnly
+              ? `<p class="log-readonly-value">${log.weightUsed || '—'}</p>`
+              : `<input type="text" inputmode="decimal" placeholder="—"
               value="${log.weightUsed || ''}"
-              onchange="saveLog(${week},${dayIdx},${exIdx},'weightUsed',this.value)" />
+              onchange="saveLog(${week},${dayIdx},${exIdx},'weightUsed',this.value)" />`}
           </div>
           <div>
             <label>Reps Done</label>
-            <input type="text" inputmode="numeric" placeholder="—" 
+            ${state.readOnly
+              ? `<p class="log-readonly-value">${log.repsDone || '—'}</p>`
+              : `<input type="text" inputmode="numeric" placeholder="—"
               value="${log.repsDone || ''}"
-              onchange="saveLog(${week},${dayIdx},${exIdx},'repsDone',this.value)" />
+              onchange="saveLog(${week},${dayIdx},${exIdx},'repsDone',this.value)" />`}
           </div>
           <div>
             <label>RPE</label>
-            <input type="text" inputmode="decimal" step="0.5" placeholder="—" 
+            ${state.readOnly
+              ? `<p class="log-readonly-value">${log.rpe || '—'}</p>`
+              : `<input type="text" inputmode="decimal" step="0.5" placeholder="—"
               value="${log.rpe || ''}"
-              onchange="saveLog(${week},${dayIdx},${exIdx},'rpe',this.value)" />
+              onchange="saveLog(${week},${dayIdx},${exIdx},'rpe',this.value)" />`}
           </div>
         </div>
       </div>
     `;
   });
 
-  html += `
-    <button class="btn-add" onclick="openAddModal(${week},${dayIdx})">+ Add Exercise</button>
-    <button class="btn btn-secondary btn-block mt-2" style="margin-top:16px;" onclick="resetDayCustom(${week},${dayIdx})">
-      Reset Day to Default
-    </button>
-  `;
+  if (!state.readOnly) {
+    html += `
+      <button class="btn-add" onclick="openAddModal(${week},${dayIdx})">+ Add Exercise</button>
+      <button class="btn btn-secondary btn-block mt-2" style="margin-top:16px;" onclick="resetDayCustom(${week},${dayIdx})">
+        Reset Day to Default
+      </button>
+    `;
+  }
 
   const dayWarmupPrefix = `${week}-${dayIdx}-`;
   const hasWarmupsThisDay = Object.keys(state.warmups).some((k) => k.startsWith(dayWarmupPrefix));
@@ -735,6 +754,9 @@ function renderProfiles() {
         </div>
         <button class="btn-icon" style="width:32px;height:32px;flex:none;" onclick="event.stopPropagation();openRenameProfileModal('${p.id}')" title="Rename">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </button>
+        <button class="btn-icon" style="width:32px;height:32px;flex:none;" onclick="event.stopPropagation();openShareModal('${p.id}')" title="Share (read-only)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
         </button>
         <button class="btn-icon" style="width:32px;height:32px;flex:none;" onclick="event.stopPropagation();resetProfileHandler('${p.id}')" title="Reset to Default">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 2.64-6.36"/><path d="M3 4v5h5"/></svg>
@@ -1062,6 +1084,77 @@ function openDuplicateProfileModal() {
     </div>
   `;
   document.getElementById('modal-overlay').classList.remove('hidden');
+}
+
+async function openShareModal(profileId) {
+  const p = state.profiles.find((x) => x.id === profileId);
+  if (!p) return;
+  const data = await window.Firebase.loadProfileData(state.user.uid, profileId);
+  state.editing = { mode: 'share-profile', profileId, emails: (data && data.viewerEmails) || [] };
+  document.getElementById('modal-title').textContent = `Share "${p.name}"`;
+  document.getElementById('modal-save').classList.add('hidden');
+  renderShareModalBody();
+  document.getElementById('modal-overlay').classList.remove('hidden');
+}
+
+function renderShareModalBody() {
+  const { emails } = state.editing;
+  document.getElementById('modal-body').innerHTML = `
+    <p class="note" style="margin-bottom:12px;">Anyone below can view this profile's maxes and logs read-only, once they sign in with a matching email. They can't edit anything.</p>
+    <div class="form-group">
+      <label>Coach emails</label>
+      <div class="plate-list">
+        ${emails.length === 0 ? '<p class="note">No one has view access yet.</p>' : emails.map((email, idx) => `
+          <div class="plate-list-row">
+            <span>${email}</span>
+            <button class="btn-icon" style="width:28px;height:28px;flex:none;" onclick="removeViewerEmail(${idx})" title="Remove">&times;</button>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Add a coach's email</label>
+      <div class="form-row">
+        <input type="email" id="share-email-input" placeholder="coach@example.com" />
+        <button class="btn btn-secondary" onclick="addViewerEmail()">Add</button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Share link</label>
+      <button class="btn btn-secondary btn-block" onclick="copyShareLink()">Copy Link</button>
+    </div>
+  `;
+}
+
+async function addViewerEmail() {
+  const input = document.getElementById('share-email-input');
+  const email = input.value.trim().toLowerCase();
+  if (!email || !email.includes('@')) {
+    showToast('Enter a valid email');
+    return;
+  }
+  if (state.editing.emails.includes(email)) {
+    showToast('Already shared with that email');
+    return;
+  }
+  state.editing.emails.push(email);
+  await window.Firebase.setViewerEmails(state.user.uid, state.editing.profileId, state.editing.emails);
+  renderShareModalBody();
+  showToast('Shared with ' + email);
+}
+
+async function removeViewerEmail(idx) {
+  state.editing.emails.splice(idx, 1);
+  await window.Firebase.setViewerEmails(state.user.uid, state.editing.profileId, state.editing.emails);
+  renderShareModalBody();
+}
+
+function copyShareLink() {
+  const link = `${location.origin}${location.pathname}?shareUid=${state.user.uid}&shareProfile=${state.editing.profileId}`;
+  navigator.clipboard.writeText(link).then(
+    () => showToast('Link copied'),
+    () => showToast(link)
+  );
 }
 
 async function createProfileHandler(name) {
@@ -1499,6 +1592,7 @@ document.getElementById('btn-back').addEventListener('click', goBack);
 document.getElementById('btn-setup').addEventListener('click', goSetup);
 document.getElementById('btn-profile').addEventListener('click', goProfiles);
 document.getElementById('btn-plates').addEventListener('click', goPlates);
+document.getElementById('btn-exit-shared').addEventListener('click', exitSharedView);
 
 document.getElementById('modal-close').addEventListener('click', closeModal);
 document.getElementById('modal-cancel').addEventListener('click', closeModal);
@@ -1540,6 +1634,49 @@ async function loadUserProfileContext(uid) {
   }
 }
 
+async function loadSharedProfileContext() {
+  const { uid, profileId } = state.sharedView;
+  try {
+    const data = await window.Firebase.loadProfileData(uid, profileId);
+    if (!data) throw new Error('Shared profile not found');
+    applySharedProfileData(data);
+    state.readOnly = true;
+    if (state.profileUnsubscribe) state.profileUnsubscribe();
+    state.profileUnsubscribe = window.Firebase.watchCurrentProfile(uid, profileId, applySharedProfileData);
+    if (state.view === 'auth') {
+      state.view = 'home';
+      state.viewHistory = [];
+    }
+  } catch (e) {
+    console.warn('Could not load shared profile', e);
+    state.sharedView = null;
+    state.readOnly = false;
+    showToast("Couldn't open that shared profile - check the link or ask for a new one");
+    await loadUserProfileContext(state.user.uid);
+  }
+}
+
+function applySharedProfileData(data) {
+  state.sharedView.profileName = data.name || 'Shared Profile';
+  if (data.maxes) state.maxes = data.maxes;
+  if (data.rounding) state.rounding = data.rounding;
+  state.customExercises = data.customExercises || {};
+  state.logs = data.logs || {};
+  if (data.plateSettings) state.plateSettings = data.plateSettings;
+  render();
+}
+
+function exitSharedView() {
+  if (state.profileUnsubscribe) {
+    state.profileUnsubscribe();
+    state.profileUnsubscribe = null;
+  }
+  state.sharedView = null;
+  state.readOnly = false;
+  history.replaceState(null, '', location.pathname);
+  loadUserProfileContext(state.user.uid).then(render);
+}
+
 async function init() {
   try {
     const res = await fetch('program_data.json');
@@ -1550,6 +1687,13 @@ async function init() {
     return;
   }
 
+  const shareParams = new URLSearchParams(location.search);
+  const shareUid = shareParams.get('shareUid');
+  const shareProfile = shareParams.get('shareProfile');
+  if (shareUid && shareProfile) {
+    state.sharedView = { uid: shareUid, profileId: shareProfile, profileName: '' };
+  }
+
   render();
   await waitForFirebase();
   window.Firebase.onAuthChange(async (user) => {
@@ -1557,7 +1701,9 @@ async function init() {
     state.authReady = true;
     state.authError = '';
 
-    if (user) {
+    if (user && state.sharedView) {
+      await loadSharedProfileContext();
+    } else if (user) {
       await loadUserProfileContext(user.uid);
     } else {
       if (state.profileUnsubscribe) {
