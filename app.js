@@ -93,7 +93,7 @@ function defaultPlateSettings() {
 
 // ========== STATE ==========
 const state = {
-  view: 'home', // home | setup | week | day | auth | profiles | plates | table
+  view: 'home', // home | setup | week | day | auth | profiles | plates | table | progress
   viewHistory: [], // back-stack of prior views; goBack() pops it
   currentWeek: null,
   currentDayIdx: 0,
@@ -333,6 +333,165 @@ function getLogKey(week, dayIdx, exIdx) {
   return `${week}-${dayIdx}-${exIdx}`;
 }
 
+// ========== PROGRESS ==========
+// Returns 10 entries, index 0..9: [0] = Setup baseline e1RM (or null),
+// [1..9] = best (max) e1RM implied by any logged main-lift set for that
+// lift that week, or null if nothing was logged for that lift that week.
+function computeLiftProgress(liftKey) {
+  const points = new Array(10).fill(null);
+  points[0] = state.maxes[liftKey]?.e1rm ?? null;
+
+  for (let week = 1; week <= 9; week++) {
+    const days = PROGRAM[String(week)]?.days || [];
+    let best = null;
+    days.forEach((day, dayIdx) => {
+      getExercises(week, dayIdx).forEach((ex, exIdx) => {
+        const isMain = ex.lift && (ex.type === 'percentage' || (ex.type === 'rpe' && (ex.name.toLowerCase().includes('squat') || ex.name.toLowerCase().includes('bench') || ex.name.toLowerCase().includes('deadlift'))));
+        if (!isMain || ex.lift !== liftKey) return;
+        const log = state.logs[getLogKey(week, dayIdx, exIdx)];
+        if (!log) return;
+        const e1rm = estimate1RM(log.weightUsed, log.repsDone, log.rpe);
+        if (e1rm != null && (best == null || e1rm > best)) best = e1rm;
+      });
+    });
+    points[week] = best;
+  }
+  return points;
+}
+
+function buildChartSegments(points) {
+  const segments = [];
+  let current = [];
+  points.forEach((v, week) => {
+    if (v == null) {
+      if (current.length) segments.push(current);
+      current = [];
+    } else {
+      current.push({ week, value: v });
+    }
+  });
+  if (current.length) segments.push(current);
+  return segments;
+}
+
+function chooseAxisStep(range) {
+  const candidates = [5, 10, 25, 50, 100, 250, 500];
+  const targetTicks = 5;
+  for (const step of candidates) {
+    if (range / step <= targetTicks) return step;
+  }
+  return candidates[candidates.length - 1];
+}
+
+function niceAxisScale(values) {
+  const nums = values.filter((v) => v != null);
+  if (nums.length === 0) return null;
+  let min = Math.min(...nums);
+  let max = Math.max(...nums);
+  if (min === max) { min -= 10; max += 10; }
+  const step = chooseAxisStep(max - min);
+  min = Math.max(0, Math.floor((min - step * 0.5) / step) * step);
+  max = Math.ceil((max + step * 0.5) / step) * step;
+  const ticks = [];
+  for (let v = min; v <= max + 1e-9; v += step) ticks.push(Math.round(v));
+  return { min, max, ticks };
+}
+
+const LIFT_CHART_COLOR = { squat: 'var(--accent)', bench: 'var(--chart-indigo)', deadlift: 'var(--chart-magenta)' };
+const LIFT_LABEL = { squat: 'Squat', bench: 'Bench', deadlift: 'Deadlift' };
+
+function renderProgressChart(seriesByLift) {
+  const W = 340, H = 200;
+  const marginLeft = 34, marginRight = 8, marginTop = 8, marginBottom = 20;
+  const chartW = W - marginLeft - marginRight;
+  const chartH = H - marginTop - marginBottom;
+
+  const lifts = ['squat', 'bench', 'deadlift'].filter((l) => seriesByLift[l].some((v) => v != null));
+  if (lifts.length === 0) {
+    return `<div class="empty-state"><p>No data yet.</p></div>`;
+  }
+
+  const scale = niceAxisScale(lifts.flatMap((l) => seriesByLift[l]));
+  const xFor = (week) => marginLeft + (week / 9) * chartW;
+  const yFor = (v) => marginTop + chartH - ((v - scale.min) / (scale.max - scale.min)) * chartH;
+
+  let gridlines = '';
+  scale.ticks.forEach((tick) => {
+    const y = yFor(tick);
+    gridlines += `
+      <line x1="${marginLeft}" y1="${y}" x2="${W - marginRight}" y2="${y}" class="chart-gridline" />
+      <text x="${marginLeft - 6}" y="${y}" class="chart-axis-label" text-anchor="end" dominant-baseline="middle">${tick}</text>
+    `;
+  });
+
+  let xLabels = '';
+  for (let week = 0; week <= 9; week++) {
+    xLabels += `<text x="${xFor(week)}" y="${H - marginBottom + 14}" class="chart-axis-label" text-anchor="middle">${week === 0 ? 'Start' : week}</text>`;
+  }
+
+  let linesSvg = '';
+  lifts.forEach((lift) => {
+    const points = seriesByLift[lift];
+    const color = LIFT_CHART_COLOR[lift];
+    buildChartSegments(points).forEach((seg) => {
+      if (seg.length >= 2) {
+        const pts = seg.map((p) => `${xFor(p.week)},${yFor(p.value)}`).join(' ');
+        linesSvg += `<polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />`;
+      }
+    });
+    points.forEach((value, week) => {
+      if (value == null) return;
+      linesSvg += `<circle cx="${xFor(week)}" cy="${yFor(value)}" r="3.5" fill="${color}" stroke="var(--bg-card)" stroke-width="1.5" />`;
+    });
+  });
+
+  const legend = lifts.map((lift) => {
+    const latest = [...seriesByLift[lift]].reverse().find((v) => v != null);
+    return `
+      <div class="chart-legend-item">
+        <span class="chart-legend-swatch" style="background:${LIFT_CHART_COLOR[lift]}"></span>
+        <span>${LIFT_LABEL[lift]}</span>
+        <span class="chart-legend-value">${latest != null ? latest : '—'}</span>
+      </div>
+    `;
+  }).join('');
+
+  const omitted = ['squat', 'bench', 'deadlift'].filter((l) => !lifts.includes(l));
+  const omittedNote = omitted.length
+    ? `<p class="note">${omitted.map((l) => LIFT_LABEL[l]).join(' & ')} — no data yet.</p>` : '';
+
+  return `
+    <svg viewBox="0 0 ${W} ${H}" class="progress-chart-svg" preserveAspectRatio="xMidYMid meet">
+      ${gridlines}${xLabels}${linesSvg}
+    </svg>
+    <div class="chart-legend">${legend}</div>
+    ${omittedNote}
+  `;
+}
+
+function renderProgress() {
+  const seriesByLift = {
+    squat: computeLiftProgress('squat'),
+    bench: computeLiftProgress('bench'),
+    deadlift: computeLiftProgress('deadlift')
+  };
+  const hasAnyData = Object.values(seriesByLift).some((pts) => pts.some((v) => v != null));
+
+  if (!hasAnyData) {
+    mainEl.innerHTML = `<div class="empty-state"><p>No data yet. Enter your maxes in Setup or log a few sets to see your estimated 1RM progress here.</p></div>`;
+    return;
+  }
+
+  mainEl.innerHTML = `
+    <div class="card">${renderProgressChart(seriesByLift)}</div>
+    <p class="note">Each point is your best estimated 1RM logged that week from main-lift working sets. "Start" is your Setup baseline. Weeks with nothing logged are skipped, not interpolated.</p>
+  `;
+}
+
+function goProgress() {
+  navigateTo('progress');
+}
+
 // ========== RENDER ==========
 const appEl = document.getElementById('app');
 const mainEl = document.getElementById('main');
@@ -368,7 +527,7 @@ function render() {
   if (!state.user) state.view = 'auth';
 
   updateE1RMs();
-  appEl.classList.toggle('wide-view', state.view === 'table');
+  appEl.classList.toggle('wide-view', state.view === 'table' || state.view === 'progress');
   btnBack.classList.toggle('hidden', state.view === 'home' || state.view === 'auth');
   btnSetup.classList.toggle('hidden', state.view === 'auth' || state.readOnly);
   btnProfile.classList.toggle('hidden', state.view === 'auth' || state.readOnly);
@@ -393,6 +552,9 @@ function render() {
   } else if (state.view === 'table') {
     headerTitle.textContent = 'Program Table';
     renderTableView();
+  } else if (state.view === 'progress') {
+    headerTitle.textContent = 'Progress';
+    renderProgress();
   } else if (state.view === 'home') {
     headerTitle.textContent = 'TSA 9-Week';
     renderHome();
@@ -444,7 +606,10 @@ function renderHome() {
   html += `
     <div class="card-title-row" style="margin-top:8px;">
       <div class="card-title">Program Weeks</div>
-      <button class="link-btn" onclick="goTable(null)">View as Table</button>
+      <div class="flex gap-2 items-center">
+        <button class="link-btn" onclick="goProgress()">Progress</button>
+        <button class="link-btn" onclick="goTable(null)">View as Table</button>
+      </div>
     </div>
     <div class="week-list">`;
 

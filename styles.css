@@ -14,6 +14,8 @@
   --yellow: #facc15;
   --green: #4ade80;
   --orange: #fb923c;
+  --chart-indigo: #818cf8;
+  --chart-magenta: #f472b6;
   --border: #334155;
   --radius: 12px;
   --radius-sm: 8px;
@@ -1055,6 +1057,54 @@ input.rpe-red {
   opacity: 0.5;
 }
 
+/* Progress chart */
+.progress-chart-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.chart-gridline {
+  stroke: var(--border);
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+
+.chart-axis-label {
+  fill: var(--text-dim);
+  font-size: 9px;
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.chart-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.chart-legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.chart-legend-value {
+  font-family: var(--mono);
+  font-weight: 600;
+  color: var(--text);
+}
+
 /* Modal */
 .modal-overlay {
   position: fixed;
@@ -1248,12 +1298,12 @@ input.rpe-red {
   }
 }
 
-/* Program Table gets a wider layout on larger screens (tablets in
-   landscape and up), so its many columns fit without needing to
-   scroll sideways - the rest of the app stays phone-width, since
-   it's designed around a single-column card layout. #app has no
-   explicit width, just max-width, so it still shrinks to fit any
-   viewport narrower than this cap. */
+/* Program Table and Progress get a wider layout on larger screens (tablets
+   in landscape and up), so the table's many columns and the progress
+   chart both get more room without needing to scroll sideways - the rest
+   of the app stays phone-width, since it's designed around a single-column
+   card layout. #app has no explicit width, just max-width, so it still
+   shrinks to fit any viewport narrower than this cap. */
 @media (min-width: 760px) {
   #app.wide-view {
     max-width: 1100px;
