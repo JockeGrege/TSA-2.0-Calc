@@ -602,11 +602,39 @@ input[inputmode="decimal"], input[inputmode="numeric"] {
 }
 
 /* Program table (all-days / all-weeks compact view) */
-.program-table-wrap {
-  overflow-x: auto;
-  background: var(--bg-input);
+.program-week-block {
+  margin-bottom: 20px;
+}
+
+.program-week-banner {
+  background: var(--accent-dim);
+  color: var(--bg);
+  font-weight: 700;
+  text-align: center;
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 12px;
+  font-size: 0.9rem;
+}
+
+.program-day-block {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+.program-day-banner {
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-weight: 700;
+  text-align: center;
+  padding: 8px;
+  font-size: 0.85rem;
+}
+
+.program-table-wrap {
+  overflow-x: auto;
 }
 
 .program-table {
@@ -626,9 +654,10 @@ input[inputmode="decimal"], input[inputmode="numeric"] {
 .program-table th {
   color: var(--text-dim);
   font-weight: 600;
-  font-size: 0.68rem;
+  font-size: 0.66rem;
   text-transform: uppercase;
   border-top: none;
+  background: var(--bg-input);
 }
 
 .program-table .col-exercise {
@@ -640,6 +669,16 @@ input[inputmode="decimal"], input[inputmode="numeric"] {
 .program-table td {
   font-family: var(--mono);
   color: var(--text);
+}
+
+.program-table .col-logged {
+  background: rgba(74, 222, 128, 0.08);
+}
+
+.program-table tr.main-lift-row .col-exercise {
+  font-weight: 700;
+  color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 /* Plate breakdown (inline companion) */

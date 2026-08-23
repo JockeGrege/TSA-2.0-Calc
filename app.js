@@ -553,6 +553,50 @@ function renderWeek() {
   mainEl.innerHTML = html;
 }
 
+function renderTableViewDayTable(week, dayIdx, day) {
+  let rows = '';
+  getExercises(week, dayIdx).forEach((ex, exIdx) => {
+    const isMain = ex.lift && (ex.type === 'percentage' || (ex.type === 'rpe' && (ex.name.toLowerCase().includes('squat') || ex.name.toLowerCase().includes('bench') || ex.name.toLowerCase().includes('deadlift'))));
+    const load = (ex.type === 'percentage' && ex.percent != null && ex.lift) ? calcLoad(ex.percent, ex.lift) : null;
+    const log = state.logs[getLogKey(week, dayIdx, exIdx)] || {};
+    rows += `
+      <tr class="${isMain ? 'main-lift-row' : ''}">
+        <td class="col-exercise">${ex.name}</td>
+        <td>${ex.sets || '—'}</td>
+        <td>${ex.reps || '—'}</td>
+        <td>${ex.intensity || '—'}</td>
+        <td>${load != null ? load : '—'}</td>
+        <td class="col-logged">${log.weightUsed || '—'}</td>
+        <td class="col-logged">${log.repsDone || '—'}</td>
+        <td class="col-logged">${log.rpe || '—'}</td>
+      </tr>
+    `;
+  });
+
+  return `
+    <div class="program-day-block">
+      <div class="program-day-banner">${day.name}</div>
+      <div class="program-table-wrap">
+        <table class="program-table">
+          <thead>
+            <tr>
+              <th class="col-exercise">Exercise</th>
+              <th>Sets</th>
+              <th>Reps</th>
+              <th>Intensity</th>
+              <th>Load</th>
+              <th class="col-logged">Weight Used</th>
+              <th class="col-logged">Reps Done</th>
+              <th class="col-logged">RPE</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
 function renderTableView() {
   const selectedWeek = state.tableViewWeek;
   const weeks = selectedWeek ? [selectedWeek] : [1, 2, 3, 4, 5, 6, 7, 8, 9];
@@ -562,55 +606,19 @@ function renderTableView() {
       <button class="choice-btn ${selectedWeek == null ? 'active' : ''}" onclick="goTable(null)">All</button>
       ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<button class="choice-btn ${selectedWeek === n ? 'active' : ''}" onclick="goTable(${n})">${n}</button>`).join('')}
     </div>
-    <div class="program-table-wrap">
-      <table class="program-table">
-        <thead>
-          <tr>
-            ${selectedWeek ? '' : '<th>Wk</th>'}
-            <th>Day</th>
-            <th class="col-exercise">Exercise</th>
-            <th>Sets</th>
-            <th>Reps</th>
-            <th>Intensity</th>
-            <th>Load</th>
-            <th>Wt</th>
-            <th>Reps</th>
-            <th>RPE</th>
-          </tr>
-        </thead>
-        <tbody>
   `;
 
   weeks.forEach((week) => {
     const w = PROGRAM[String(week)];
     if (!w) return;
+    html += `<div class="program-week-block">`;
+    html += `<div class="program-week-banner">${w.title}</div>`;
     w.days.forEach((day, dayIdx) => {
-      getExercises(week, dayIdx).forEach((ex, exIdx) => {
-        const load = (ex.type === 'percentage' && ex.percent != null && ex.lift) ? calcLoad(ex.percent, ex.lift) : null;
-        const log = state.logs[getLogKey(week, dayIdx, exIdx)] || {};
-        html += `
-          <tr>
-            ${selectedWeek ? '' : `<td>${week}</td>`}
-            <td>${day.name.replace('Day ', 'D')}</td>
-            <td class="col-exercise">${ex.name}</td>
-            <td>${ex.sets || '—'}</td>
-            <td>${ex.reps || '—'}</td>
-            <td>${ex.intensity || '—'}</td>
-            <td>${load != null ? load : '—'}</td>
-            <td>${log.weightUsed || '—'}</td>
-            <td>${log.repsDone || '—'}</td>
-            <td>${log.rpe || '—'}</td>
-          </tr>
-        `;
-      });
+      html += renderTableViewDayTable(week, dayIdx, day);
     });
+    html += `</div>`;
   });
 
-  html += `
-        </tbody>
-      </table>
-    </div>
-  `;
   mainEl.innerHTML = html;
 }
 
