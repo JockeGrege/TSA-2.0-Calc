@@ -36,6 +36,7 @@ const DEFAULT_PROFILE_DATA = {
   rounding: 2.5,
   customExercises: {},
   logs: {},
+  trackedLifts: {},
   viewerEmails: [],
   plateSettings: {
     barbellKg: 20,

@@ -112,6 +112,9 @@ const state = {
   // Plate calculator settings (persisted, synced like maxes/rounding)
   plateSettings: defaultPlateSettings(),
 
+  // Tracked-lift registry for accessory-lift progress charting (persisted, synced like maxes/rounding)
+  trackedLifts: {}, // id -> { label, color }
+
   // Warmup calculator (session-only; never saved or synced)
   warmups: {}, // "week-dayIdx-exIdx" -> { scheme, targetWeight, expanded }
 
@@ -120,6 +123,8 @@ const state = {
   plateCalcWeight: '', // manual weight entry on the standalone Plate Calculator screen
   tableViewWeek: null, // null = all 9 weeks, 1-9 = a single week, in the Program Table view
   openProfileMenuId: null, // id of the profile row whose "more actions" menu is open, if any
+  progressHiddenLifts: {}, // key -> boolean, session-only per-lift chart visibility toggle in Progress view
+  progressFilterMode: 'all', // 'all' | 'main' | 'accessory' - session-only, never saved or synced (changed too often to sync)
 
   // Auth / cloud sync
   user: null,
@@ -153,7 +158,8 @@ function saveState() {
     rounding: state.rounding,
     customExercises: state.customExercises,
     logs: state.logs,
-    plateSettings: state.plateSettings
+    plateSettings: state.plateSettings,
+    trackedLifts: state.trackedLifts
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
 
@@ -334,24 +340,40 @@ function getLogKey(week, dayIdx, exIdx) {
 }
 
 // ========== PROGRESS ==========
-// Returns 10 entries, index 0..9: [0] = Setup baseline e1RM (or null),
-// [1..9] = best (max) e1RM implied by any logged main-lift set for that
-// lift that week, or null if nothing was logged for that lift that week.
-function computeLiftProgress(liftKey) {
+const FIXED_LIFTS = ['squat', 'bench', 'deadlift'];
+
+function isMainLiftExercise(ex) {
+  return !!(ex.lift && (ex.type === 'percentage' || (ex.type === 'rpe' && (ex.name.toLowerCase().includes('squat') || ex.name.toLowerCase().includes('bench') || ex.name.toLowerCase().includes('deadlift')))));
+}
+
+// Returns 10 entries, index 0..9. Each entry is either null (nothing for that
+// week) or { value, dayIdx, exIdx, log } where value is the best (max) e1RM
+// implied by any matching logged set that week, and dayIdx/exIdx/log identify
+// which exercise produced it (used by the click-to-detail popup).
+// `key` is either a fixed lift key ('squat'|'bench'|'deadlift', matched via
+// ex.lift + isMainLiftExercise) or a tracked-registry id (matched via ex.trackedId).
+function computeLiftProgress(key) {
+  const isTracked = !FIXED_LIFTS.includes(key);
   const points = new Array(10).fill(null);
-  points[0] = state.maxes[liftKey]?.e1rm ?? null;
+
+  if (!isTracked) {
+    const startValue = state.maxes[key]?.e1rm ?? null;
+    points[0] = startValue != null ? { value: startValue, dayIdx: null, exIdx: null, log: null } : null;
+  }
 
   for (let week = 1; week <= 9; week++) {
     const days = PROGRAM[String(week)]?.days || [];
     let best = null;
     days.forEach((day, dayIdx) => {
       getExercises(week, dayIdx).forEach((ex, exIdx) => {
-        const isMain = ex.lift && (ex.type === 'percentage' || (ex.type === 'rpe' && (ex.name.toLowerCase().includes('squat') || ex.name.toLowerCase().includes('bench') || ex.name.toLowerCase().includes('deadlift'))));
-        if (!isMain || ex.lift !== liftKey) return;
+        const matches = isTracked ? ex.trackedId === key : (isMainLiftExercise(ex) && ex.lift === key);
+        if (!matches) return;
         const log = state.logs[getLogKey(week, dayIdx, exIdx)];
         if (!log) return;
         const e1rm = estimate1RM(log.weightUsed, log.repsDone, log.rpe);
-        if (e1rm != null && (best == null || e1rm > best)) best = e1rm;
+        if (e1rm != null && (best == null || e1rm > best.value)) {
+          best = { value: e1rm, dayIdx, exIdx, log };
+        }
       });
     });
     points[week] = best;
@@ -362,12 +384,12 @@ function computeLiftProgress(liftKey) {
 function buildChartSegments(points) {
   const segments = [];
   let current = [];
-  points.forEach((v, week) => {
-    if (v == null) {
+  points.forEach((p, week) => {
+    if (p == null) {
       if (current.length) segments.push(current);
       current = [];
     } else {
-      current.push({ week, value: v });
+      current.push({ week, value: p.value });
     }
   });
   if (current.length) segments.push(current);
@@ -399,66 +421,169 @@ function niceAxisScale(values) {
 
 const LIFT_CHART_COLOR = { squat: 'var(--accent)', bench: 'var(--chart-indigo)', deadlift: 'var(--chart-magenta)' };
 const LIFT_LABEL = { squat: 'Squat', bench: 'Bench', deadlift: 'Deadlift' };
+const ACCESSORY_CHART_PALETTE = [
+  'var(--chart-teal)',
+  'var(--chart-blue)',
+  'var(--chart-purple)',
+  'var(--chart-lime)',
+  'var(--chart-stone)',
+  'var(--chart-fuchsia)'
+];
 
-function renderProgressChart(seriesByLift) {
+function slugify(label) {
+  return label.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'lift';
+}
+
+// Creates a new tracked-lift registry entry and returns its id. The id is an
+// internal disambiguator only (slug + random 3-digit suffix) — never shown to the user.
+function createTrackedLift(label) {
+  const base = slugify(label);
+  let id;
+  do {
+    id = `${base}-${Math.floor(100 + Math.random() * 900)}`;
+  } while (state.trackedLifts[id]);
+
+  const color = ACCESSORY_CHART_PALETTE[Object.keys(state.trackedLifts).length % ACCESSORY_CHART_PALETTE.length];
+  state.trackedLifts[id] = { label, color };
+  return id;
+}
+
+function getProgressCandidates() {
+  const mode = state.progressFilterMode || 'all';
+  const hidden = state.progressHiddenLifts || {};
+
+  const main = FIXED_LIFTS.map((key) => ({
+    key, label: LIFT_LABEL[key], color: LIFT_CHART_COLOR[key], category: 'main'
+  }));
+
+  const accessory = Object.keys(state.trackedLifts || {}).map((id) => {
+    const t = state.trackedLifts[id];
+    return { key: id, label: t.label, color: t.color, category: 'accessory' };
+  });
+
+  let candidates;
+  if (mode === 'main') candidates = main;
+  else if (mode === 'accessory') candidates = accessory;
+  else candidates = main.concat(accessory);
+
+  return candidates.map((c) => ({ ...c, hidden: !!hidden[c.key] }));
+}
+
+function setProgressFilterMode(mode) {
+  state.progressFilterMode = mode;
+  render(); // session-only - not persisted, to avoid a Firestore write on every toggle
+}
+
+function toggleProgressLiftActive(key) {
+  state.progressHiddenLifts[key] = !state.progressHiddenLifts[key];
+  render();
+}
+
+function goToWeekDay(week, dayIdx) {
+  state.currentWeek = week;
+  state.currentDayIdx = dayIdx;
+  navigateTo('day');
+}
+
+function showProgressPointDetail(key, week) {
+  const candidate = getProgressCandidates().find((c) => c.key === key)
+    || (FIXED_LIFTS.includes(key) ? { key, label: LIFT_LABEL[key] } : null);
+  if (!candidate) return;
+
+  const point = computeLiftProgress(key)[week];
+
+  state.editing = { mode: 'progress-point' };
+  document.getElementById('modal-title').textContent = `${candidate.label} — ${week === 0 ? 'Start' : 'Week ' + week}`;
+  document.getElementById('modal-save').classList.add('hidden');
+
+  let body;
+  if (week === 0) {
+    body = `
+      <p>This is your Setup baseline${point ? ` — estimated 1RM ${point.value}.` : '.'}</p>
+      <button class="btn btn-secondary btn-block mt-4" onclick="closeModal();goSetup();">Go to Setup</button>
+    `;
+  } else if (!point) {
+    body = `<p>Nothing logged for ${candidate.label} in Week ${week}.</p>`;
+  } else {
+    const day = PROGRAM[String(week)]?.days[point.dayIdx];
+    const dayName = day ? day.name : `Day ${point.dayIdx + 1}`;
+    const log = point.log || {};
+    body = `
+      <div class="form-group"><label>Day</label><p class="log-readonly-value">${dayName} (Week ${week})</p></div>
+      <div class="form-group"><label>Logged</label><p class="log-readonly-value">${log.weightUsed || '—'} × ${log.repsDone || '—'}${log.rpe ? ` @RPE ${log.rpe}` : ''}</p></div>
+      <div class="form-group"><label>Estimated 1RM</label><p class="log-readonly-value">${point.value}</p></div>
+      <button class="btn btn-primary btn-block mt-4" onclick="closeModal();goToWeekDay(${week}, ${point.dayIdx});">Go to Day</button>
+    `;
+  }
+
+  document.getElementById('modal-body').innerHTML = body;
+  document.getElementById('modal-overlay').classList.remove('hidden');
+}
+
+function renderProgressChart(candidates, seriesByKey) {
   const W = 340, H = 200;
   const marginLeft = 34, marginRight = 8, marginTop = 8, marginBottom = 20;
   const chartW = W - marginLeft - marginRight;
   const chartH = H - marginTop - marginBottom;
 
-  const lifts = ['squat', 'bench', 'deadlift'].filter((l) => seriesByLift[l].some((v) => v != null));
-  if (lifts.length === 0) {
+  const withData = candidates.filter((c) => seriesByKey[c.key].some((p) => p != null));
+  if (withData.length === 0) {
     return `<div class="empty-state"><p>No data yet.</p></div>`;
   }
 
-  const scale = niceAxisScale(lifts.flatMap((l) => seriesByLift[l]));
+  const plotted = withData.filter((c) => !c.hidden);
+  const scale = plotted.length
+    ? niceAxisScale(plotted.flatMap((c) => seriesByKey[c.key].map((p) => (p ? p.value : null))))
+    : null;
+
   const xFor = (week) => marginLeft + (week / 9) * chartW;
   const yFor = (v) => marginTop + chartH - ((v - scale.min) / (scale.max - scale.min)) * chartH;
-
-  let gridlines = '';
-  scale.ticks.forEach((tick) => {
-    const y = yFor(tick);
-    gridlines += `
-      <line x1="${marginLeft}" y1="${y}" x2="${W - marginRight}" y2="${y}" class="chart-gridline" />
-      <text x="${marginLeft - 6}" y="${y}" class="chart-axis-label" text-anchor="end" dominant-baseline="middle">${tick}</text>
-    `;
-  });
 
   let xLabels = '';
   for (let week = 0; week <= 9; week++) {
     xLabels += `<text x="${xFor(week)}" y="${H - marginBottom + 14}" class="chart-axis-label" text-anchor="middle">${week === 0 ? 'Start' : week}</text>`;
   }
 
+  let gridlines = '';
   let linesSvg = '';
-  lifts.forEach((lift) => {
-    const points = seriesByLift[lift];
-    const color = LIFT_CHART_COLOR[lift];
-    buildChartSegments(points).forEach((seg) => {
-      if (seg.length >= 2) {
-        const pts = seg.map((p) => `${xFor(p.week)},${yFor(p.value)}`).join(' ');
-        linesSvg += `<polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />`;
-      }
+  if (scale) {
+    scale.ticks.forEach((tick) => {
+      const y = yFor(tick);
+      gridlines += `
+        <line x1="${marginLeft}" y1="${y}" x2="${W - marginRight}" y2="${y}" class="chart-gridline" />
+        <text x="${marginLeft - 6}" y="${y}" class="chart-axis-label" text-anchor="end" dominant-baseline="middle">${tick}</text>
+      `;
     });
-    points.forEach((value, week) => {
-      if (value == null) return;
-      linesSvg += `<circle cx="${xFor(week)}" cy="${yFor(value)}" r="3.5" fill="${color}" stroke="var(--bg-card)" stroke-width="1.5" />`;
-    });
-  });
 
-  const legend = lifts.map((lift) => {
-    const latest = [...seriesByLift[lift]].reverse().find((v) => v != null);
+    plotted.forEach((c) => {
+      const points = seriesByKey[c.key];
+      buildChartSegments(points).forEach((seg) => {
+        if (seg.length >= 2) {
+          const pts = seg.map((p) => `${xFor(p.week)},${yFor(p.value)}`).join(' ');
+          linesSvg += `<polyline points="${pts}" fill="none" stroke="${c.color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />`;
+        }
+      });
+      points.forEach((point, week) => {
+        if (point == null) return;
+        linesSvg += `<circle cx="${xFor(week)}" cy="${yFor(point.value)}" r="3.5" fill="${c.color}" stroke="var(--bg-card)" stroke-width="1.5" style="cursor:pointer" onclick="showProgressPointDetail('${c.key}', ${week})" />`;
+      });
+    });
+  }
+
+  const legend = withData.map((c) => {
+    const latest = [...seriesByKey[c.key]].reverse().find((p) => p != null);
     return `
-      <div class="chart-legend-item">
-        <span class="chart-legend-swatch" style="background:${LIFT_CHART_COLOR[lift]}"></span>
-        <span>${LIFT_LABEL[lift]}</span>
-        <span class="chart-legend-value">${latest != null ? latest : '—'}</span>
+      <div class="chart-legend-item ${c.hidden ? 'inactive' : ''}" style="cursor:pointer" onclick="toggleProgressLiftActive('${c.key}')">
+        <span class="chart-legend-swatch" style="background:${c.color}"></span>
+        <span>${c.label}</span>
+        <span class="chart-legend-value">${latest ? latest.value : '—'}</span>
       </div>
     `;
   }).join('');
 
-  const omitted = ['squat', 'bench', 'deadlift'].filter((l) => !lifts.includes(l));
+  const omitted = candidates.filter((c) => !withData.includes(c));
   const omittedNote = omitted.length
-    ? `<p class="note">${omitted.map((l) => LIFT_LABEL[l]).join(' & ')} — no data yet.</p>` : '';
+    ? `<p class="note">${omitted.map((c) => c.label).join(' & ')} — no data yet.</p>` : '';
 
   return `
     <svg viewBox="0 0 ${W} ${H}" class="progress-chart-svg" preserveAspectRatio="xMidYMid meet">
@@ -470,21 +595,32 @@ function renderProgressChart(seriesByLift) {
 }
 
 function renderProgress() {
-  const seriesByLift = {
-    squat: computeLiftProgress('squat'),
-    bench: computeLiftProgress('bench'),
-    deadlift: computeLiftProgress('deadlift')
-  };
-  const hasAnyData = Object.values(seriesByLift).some((pts) => pts.some((v) => v != null));
+  const candidates = getProgressCandidates();
+  const seriesByKey = {};
+  candidates.forEach((c) => { seriesByKey[c.key] = computeLiftProgress(c.key); });
+
+  const hasAnyData = candidates.some((c) => seriesByKey[c.key].some((p) => p != null));
+
+  const filterPills = `
+    <div class="choice-row mb-2">
+      <button class="choice-btn ${state.progressFilterMode === 'all' ? 'active' : ''}" onclick="setProgressFilterMode('all')">All</button>
+      <button class="choice-btn ${state.progressFilterMode === 'main' ? 'active' : ''}" onclick="setProgressFilterMode('main')">Main Lifts</button>
+      <button class="choice-btn ${state.progressFilterMode === 'accessory' ? 'active' : ''}" onclick="setProgressFilterMode('accessory')">Accessory</button>
+    </div>
+  `;
 
   if (!hasAnyData) {
-    mainEl.innerHTML = `<div class="empty-state"><p>No data yet. Enter your maxes in Setup or log a few sets to see your estimated 1RM progress here.</p></div>`;
+    mainEl.innerHTML = `
+      ${filterPills}
+      <div class="empty-state"><p>No data yet. Enter your maxes in Setup or log a few sets to see your estimated 1RM progress here.</p></div>
+    `;
     return;
   }
 
   mainEl.innerHTML = `
-    <div class="card">${renderProgressChart(seriesByLift)}</div>
-    <p class="note">Each point is your best estimated 1RM logged that week from main-lift working sets. "Start" is your Setup baseline. Weeks with nothing logged are skipped, not interpolated.</p>
+    ${filterPills}
+    <div class="card">${renderProgressChart(candidates, seriesByKey)}</div>
+    <p class="note">Each point is your best estimated 1RM logged that week from working sets for that lift. "Start" is your Setup baseline (main lifts only). Weeks with nothing logged are skipped, not interpolated. Tap a point for details, or a legend entry to hide/show it.</p>
   `;
 }
 
@@ -604,13 +740,17 @@ function renderHome() {
   }
 
   html += `
-    <div class="card-title-row" style="margin-top:8px;">
-      <div class="card-title">Program Weeks</div>
-      <div class="flex gap-2 items-center">
-        <button class="link-btn" onclick="goProgress()">Progress</button>
-        <button class="link-btn" onclick="goTable(null)">View as Table</button>
-      </div>
+    <div class="form-row mt-2">
+      <button class="btn btn-secondary" onclick="goProgress()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+        Progress
+      </button>
+      <button class="btn btn-secondary" onclick="goTable(null)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+        View as Table
+      </button>
     </div>
+    <div class="card-title" style="margin-top:16px;">Program Weeks</div>
     <div class="week-list">`;
 
   for (let i = 1; i <= 9; i++) {
@@ -661,21 +801,21 @@ function renderSetup() {
         <label>${lift.label}</label>
         <div class="form-row">
           <div>
-            <input type="text" inputmode="decimal" placeholder="Weight" 
-              value="${m.weight || ''}" 
-              onchange="updateMax('${lift.key}','weight',this.value)"
+            <input type="text" inputmode="decimal" placeholder="Weight"
+              value="${m.weight || ''}"
+              onchange="this.value = updateMax('${lift.key}','weight',this.value)"
               oninput="updateMax('${lift.key}','weight',this.value)" />
           </div>
           <div>
-            <input type="text" inputmode="numeric" placeholder="Reps" 
-              value="${m.reps || ''}" 
-              onchange="updateMax('${lift.key}','reps',this.value)"
+            <input type="text" inputmode="numeric" placeholder="Reps"
+              value="${m.reps || ''}"
+              onchange="this.value = updateMax('${lift.key}','reps',this.value)"
               oninput="updateMax('${lift.key}','reps',this.value)" />
           </div>
           <div>
-            <input type="text" inputmode="decimal" placeholder="RPE" step="0.5" min="6.5" max="10"
-              value="${m.rpe || ''}" 
-              onchange="updateMax('${lift.key}','rpe',this.value)"
+            <input type="text" inputmode="decimal" placeholder="RPE" step="0.5" min="1" max="10"
+              value="${m.rpe || ''}"
+              onchange="this.value = updateMax('${lift.key}','rpe',this.value)"
               oninput="updateMax('${lift.key}','rpe',this.value)" />
           </div>
         </div>
@@ -863,7 +1003,7 @@ function renderDay() {
               ? `<p class="log-readonly-value">${log.weightUsed || '—'}</p>`
               : `<input type="text" inputmode="decimal" placeholder="—"
               value="${log.weightUsed || ''}"
-              onchange="saveLog(${week},${dayIdx},${exIdx},'weightUsed',this.value)" />`}
+              onchange="this.value = saveLog(${week},${dayIdx},${exIdx},'weightUsed',this.value)" />`}
           </div>
           <div>
             <label>Reps Done</label>
@@ -871,7 +1011,7 @@ function renderDay() {
               ? `<p class="log-readonly-value">${log.repsDone || '—'}</p>`
               : `<input type="text" inputmode="numeric" placeholder="—"
               value="${log.repsDone || ''}"
-              onchange="saveLog(${week},${dayIdx},${exIdx},'repsDone',this.value)" />`}
+              onchange="this.value = saveLog(${week},${dayIdx},${exIdx},'repsDone',this.value)" />`}
           </div>
           <div>
             <label>RPE</label>
@@ -881,7 +1021,7 @@ function renderDay() {
               class="${rpeColorClass(log.rpe)}"
               value="${log.rpe || ''}"
               oninput="this.className = rpeColorClass(this.value)"
-              onchange="saveLog(${week},${dayIdx},${exIdx},'rpe',this.value)" />`}
+              onchange="this.value = saveLog(${week},${dayIdx},${exIdx},'rpe',this.value); this.className = rpeColorClass(this.value);" />`}
           </div>
         </div>
       </div>
@@ -1194,13 +1334,20 @@ function goTable(week) {
 
 // ========== SETUP HANDLERS ==========
 function updateMax(lift, field, value) {
-  state.maxes[lift][field] = value;
+  let sanitized;
+  if (field === 'weight') sanitized = sanitizeNonNegativeDecimal(value);
+  else if (field === 'reps') sanitized = sanitizeNonNegativeInt(value);
+  else if (field === 'rpe') sanitized = sanitizeRPEValue(value);
+  else sanitized = value;
+
+  state.maxes[lift][field] = sanitized;
   updateE1RMs();
   const el = document.getElementById(`e1rm-${lift}`);
   if (el) {
     el.textContent = state.maxes[lift].e1rm ? `e1RM ≈ ${state.maxes[lift].e1rm}` : '—';
   }
   saveState();
+  return sanitized;
 }
 
 function updateRounding(val) {
@@ -1218,7 +1365,8 @@ function defaultProfileData() {
     rounding: 2.5,
     customExercises: {},
     logs: {},
-    plateSettings: defaultPlateSettings()
+    plateSettings: defaultPlateSettings(),
+    trackedLifts: {}
   };
 }
 
@@ -1231,6 +1379,7 @@ function resetAllData() {
     state.customExercises = defaults.customExercises;
     state.logs = defaults.logs;
     state.plateSettings = defaults.plateSettings;
+    state.trackedLifts = defaults.trackedLifts;
     if (state.user && state.profileId) {
       window.Firebase.saveProfileData(state.user.uid, state.profileId, defaults)
         .catch((e) => console.warn('Cloud reset failed', e));
@@ -1302,6 +1451,7 @@ async function applyProfileData(profileId) {
     if (data.customExercises) state.customExercises = data.customExercises;
     if (data.logs) state.logs = data.logs;
     if (data.plateSettings) state.plateSettings = data.plateSettings;
+    state.trackedLifts = data.trackedLifts || {};
   }
 }
 
@@ -1320,6 +1470,7 @@ function subscribeToProfile(profileId) {
     if (data.customExercises) state.customExercises = data.customExercises;
     if (data.logs) state.logs = data.logs;
     if (data.plateSettings) state.plateSettings = data.plateSettings;
+    state.trackedLifts = data.trackedLifts || {};
     if (!isEditingInput) render();
   });
 }
@@ -1485,7 +1636,8 @@ async function exportProfileHandler(profileId) {
       rounding: state.rounding,
       customExercises: state.customExercises,
       logs: state.logs,
-      plateSettings: state.plateSettings
+      plateSettings: state.plateSettings,
+      trackedLifts: state.trackedLifts
     };
   } else {
     const remote = await window.Firebase.loadProfileData(state.user.uid, profileId);
@@ -1498,7 +1650,8 @@ async function exportProfileHandler(profileId) {
       rounding: remote.rounding,
       customExercises: remote.customExercises,
       logs: remote.logs,
-      plateSettings: remote.plateSettings
+      plateSettings: remote.plateSettings,
+      trackedLifts: remote.trackedLifts
     };
   }
 
@@ -1568,7 +1721,8 @@ async function importParsedProfile(parsed) {
     rounding: typeof parsed.rounding === 'number' ? parsed.rounding : defaults.rounding,
     customExercises: parsed.customExercises || {},
     logs: parsed.logs || {},
-    plateSettings: parsed.plateSettings || defaults.plateSettings
+    plateSettings: parsed.plateSettings || defaults.plateSettings,
+    trackedLifts: parsed.trackedLifts || {}
   };
 
   let name = (typeof parsed.name === 'string' && parsed.name.trim())
@@ -1608,6 +1762,7 @@ async function resetProfileHandler(profileId) {
     state.customExercises = defaults.customExercises;
     state.logs = defaults.logs;
     state.plateSettings = defaults.plateSettings;
+    state.trackedLifts = defaults.trackedLifts;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(defaults));
   }
   showToast('Profile reset to default');
@@ -1640,11 +1795,39 @@ async function deleteProfileHandler(profileId) {
 }
 
 // ========== LOGGING ==========
+function sanitizeNonNegativeDecimal(value) {
+  if (value == null || value === '') return '';
+  const num = parseFloat(String(value).replace(/[^0-9.\-]/g, ''));
+  if (isNaN(num)) return '';
+  return String(Math.max(0, num));
+}
+
+function sanitizeNonNegativeInt(value) {
+  if (value == null || value === '') return '';
+  const num = parseFloat(String(value).replace(/[^0-9.\-]/g, ''));
+  if (isNaN(num)) return '';
+  return String(Math.max(0, Math.trunc(num)));
+}
+
+function sanitizeRPEValue(value) {
+  if (value == null || value === '') return '';
+  const num = parseFloat(String(value).replace(/[^0-9.\-]/g, ''));
+  if (isNaN(num)) return '';
+  return String(Math.min(10, Math.max(1, num)));
+}
+
 function saveLog(week, dayIdx, exIdx, field, value) {
+  let sanitized;
+  if (field === 'weightUsed') sanitized = sanitizeNonNegativeDecimal(value);
+  else if (field === 'repsDone') sanitized = sanitizeNonNegativeInt(value);
+  else if (field === 'rpe') sanitized = sanitizeRPEValue(value);
+  else sanitized = value;
+
   const key = getLogKey(week, dayIdx, exIdx);
   if (!state.logs[key]) state.logs[key] = {};
-  state.logs[key][field] = value;
+  state.logs[key][field] = sanitized;
   saveState();
+  return sanitized;
 }
 
 function clearExerciseLog(week, dayIdx, exIdx) {
@@ -1665,6 +1848,27 @@ function clearDayLogs(week, dayIdx) {
 }
 
 // ========== CUSTOM EXERCISES ==========
+function trackedLiftFormGroupHtml(selectedId) {
+  const entries = Object.entries(state.trackedLifts || {}).sort((a, b) => a[1].label.localeCompare(b[1].label));
+  const options = entries.map(([id, t]) =>
+    `<option value="${id}" ${selectedId === id ? 'selected' : ''}>${t.label}</option>`
+  ).join('');
+  return `
+    <div class="form-group" id="edit-tracked-group">
+      <label>Track as accessory lift (optional)</label>
+      <select id="edit-tracked">
+        <option value="" ${!selectedId ? 'selected' : ''}>Not tracked</option>
+        ${options}
+        <option value="__new__">+ New tracked lift...</option>
+      </select>
+    </div>
+    <div class="form-group" id="edit-tracked-new-group" style="display:none">
+      <label>New tracked lift name</label>
+      <input type="text" id="edit-tracked-new-name" placeholder="e.g. Front Squat" />
+    </div>
+  `;
+}
+
 function openEditModal(week, dayIdx, exIdx) {
   const exercises = getExercises(week, dayIdx);
   const ex = exercises[exIdx];
@@ -1701,6 +1905,7 @@ function openEditModal(week, dayIdx, exIdx) {
         <option value="deadlift" ${ex.lift === 'deadlift' ? 'selected' : ''}>Deadlift</option>
       </select>
     </div>
+    ${trackedLiftFormGroupHtml(ex.trackedId || null)}
     <div class="form-group">
       <label>Type</label>
       <select id="edit-type">
@@ -1720,6 +1925,14 @@ function openEditModal(week, dayIdx, exIdx) {
   document.getElementById('edit-type').addEventListener('change', (e) => {
     document.getElementById('edit-percent-group').style.display = e.target.value === 'percentage' ? '' : 'none';
   });
+  document.getElementById('edit-tracked').addEventListener('change', (e) => {
+    document.getElementById('edit-tracked-new-group').style.display = e.target.value === '__new__' ? '' : 'none';
+  });
+  document.getElementById('edit-lift').addEventListener('change', (e) => {
+    document.getElementById('edit-tracked-group').style.display = e.target.value ? 'none' : '';
+    if (e.target.value) document.getElementById('edit-tracked-new-group').style.display = 'none';
+  });
+  if (ex.lift) document.getElementById('edit-tracked-group').style.display = 'none';
 
   document.getElementById('modal-overlay').classList.remove('hidden');
 }
@@ -1756,6 +1969,7 @@ function openAddModal(week, dayIdx) {
         <option value="deadlift">Deadlift</option>
       </select>
     </div>
+    ${trackedLiftFormGroupHtml(null)}
     <div class="form-group">
       <label>Type</label>
       <select id="edit-type">
@@ -1772,6 +1986,13 @@ function openAddModal(week, dayIdx) {
 
   document.getElementById('edit-type').addEventListener('change', (e) => {
     document.getElementById('edit-percent-group').style.display = e.target.value === 'percentage' ? '' : 'none';
+  });
+  document.getElementById('edit-tracked').addEventListener('change', (e) => {
+    document.getElementById('edit-tracked-new-group').style.display = e.target.value === '__new__' ? '' : 'none';
+  });
+  document.getElementById('edit-lift').addEventListener('change', (e) => {
+    document.getElementById('edit-tracked-group').style.display = e.target.value ? 'none' : '';
+    if (e.target.value) document.getElementById('edit-tracked-new-group').style.display = 'none';
   });
 
   document.getElementById('modal-overlay').classList.remove('hidden');
@@ -1842,7 +2063,20 @@ function saveModal() {
     if (match) rpe = parseFloat(match[1]);
   }
 
-  const newEx = { name, sets, reps, intensity, type, lift, percent, rpe };
+  const trackedSel = document.getElementById('edit-tracked').value;
+  let trackedId = null;
+  if (trackedSel === '__new__') {
+    const newLabel = document.getElementById('edit-tracked-new-name').value.trim();
+    if (!newLabel) {
+      showToast('Enter a name for the new tracked lift');
+      return;
+    }
+    trackedId = createTrackedLift(newLabel);
+  } else if (trackedSel) {
+    trackedId = trackedSel;
+  }
+
+  const newEx = { name, sets, reps, intensity, type, lift, percent, rpe, trackedId };
 
   let exercises = getExercises(week, dayIdx);
 
@@ -2029,6 +2263,7 @@ document.getElementById('btn-back').addEventListener('click', goBack);
 document.getElementById('btn-setup').addEventListener('click', goSetup);
 document.getElementById('btn-profile').addEventListener('click', goProfiles);
 document.getElementById('btn-plates').addEventListener('click', goPlates);
+document.getElementById('btn-progress').addEventListener('click', goProgress);
 document.getElementById('btn-exit-shared').addEventListener('click', exitSharedView);
 document.getElementById('import-profile-input').addEventListener('change', handleImportFileSelected);
 
@@ -2101,6 +2336,7 @@ function applySharedProfileData(data) {
   state.customExercises = data.customExercises || {};
   state.logs = data.logs || {};
   if (data.plateSettings) state.plateSettings = data.plateSettings;
+  state.trackedLifts = data.trackedLifts || {};
   render();
 }
 

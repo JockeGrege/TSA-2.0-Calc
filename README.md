@@ -8,9 +8,10 @@ A mobile-first progressive web app for the **TSA Intermediate Approach 2.0** (9-
 - **Setup maxes**: Enter recent heavy singles/low-rep sets + optional RPE → automatic estimated 1RM using the official TSA RPE chart (or Brzycki fallback).
 - **Rounding**: Choose 2.5 kg or 5 lb plate increments.
 - **All 9 weeks** with correct day structure and calculated loads for percentage-based main lifts.
-- **Logging**: Record Weight Used, Reps Done, and RPE for every exercise. RPE is color-coded by intensity band (green 4–5, yellow 6–7.5, orange 8–9, red 9.5+) everywhere it appears — the log input, the prescribed "@RPE" target badge, and the Program Table. Data syncs to your account and is cached locally for offline use.
+- **Logging**: Record Weight Used, Reps Done, and RPE for every exercise. These fields only accept numbers — Weight Used and Reps Done clamp negative values to 0, and RPE clamps to 1–10. RPE is color-coded by intensity band (green 4–5, yellow 6–7.5, orange 8–9, red 9.5+) everywhere it appears — the log input, the prescribed "@RPE" target badge, and the Program Table. Data syncs to your account and is cached locally for offline use.
 - **Warmup calculator**: Generate a warmup ramp (Slow / Medium / Fast schemes) for each main lift's working weight, with an expandable stage-by-stage table and an editable target weight if you want to recalibrate.
 - **Program Table view**: A compact, spreadsheet-style overview of the whole program — switch between all 9 weeks or a single week, with per-day sections and highlighted main-lift rows. Uses the full screen width on larger/landscape viewports (≥760px) instead of scrolling.
+- **Progress view**: A chart of estimated 1RM per lift across the 9-week block — squat/bench/deadlift by default, plus any exercise you mark as a "tracked" accessory lift (picked by name from a small registry, so the same lift stays on one line across different weeks). Click a data point to see exactly which day/set produced it, with a button to jump straight there. Filter by All / Main Lifts / Accessory (resets to "All" each session, not synced — this is toggled often enough that syncing it isn't worth the extra writes), and toggle individual lifts on/off in the legend just for the current visit. Also uses the full screen width on larger viewports, like the Program Table.
 - **Plate Calculator**: Given a target weight, shows the barbell + plate breakdown per side, with color swatches matching real competition plate colors. Configurable barbell weight, collar weight, available plate inventory (per unit, with an "Unlimited" option), and unit (kg/lb).
 - **Accounts & cloud sync**: Sign in with email/password or Google. Data syncs across devices via Firebase, with offline support (edits made without a connection sync once you're back online). The Profiles screen shows the signed-in account's email.
 - **Profiles**: Maintain multiple training-block profiles (e.g. different accessories or rep ranges) under one account. Rename, duplicate, switch, and see the active one clearly marked. A "more actions" menu per profile handles Export, Reset to Default, and Delete — all destructive actions ask for confirmation first.
@@ -44,7 +45,7 @@ Most modern browsers allow opening `index.html` directly, but `fetch` for the JS
 3. It will open fullscreen like a native app. Works offline after first load (data is local).
 
 ## Data
-- Your maxes, logs, plate settings, and custom exercises sync to your account via Firebase (Auth + Firestore), with a local cache so the app keeps working offline.
+- Your maxes, logs, plate settings, custom exercises, and tracked-lift registry sync to your account via Firebase (Auth + Firestore), with a local cache so the app keeps working offline.
 - Each account can hold multiple profiles (`users/{uid}/profiles/{profileId}`); a profile can optionally list coach emails (`viewerEmails`) granted read-only access.
 - Program structure extracted from the official LiftVault / TSA spreadsheet.
 
