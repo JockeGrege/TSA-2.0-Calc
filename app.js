@@ -841,6 +841,9 @@ function renderDay() {
             <button class="btn-icon" style="width:32px;height:32px;" onclick="openEditModal(${week},${dayIdx},${exIdx})" title="Edit">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
             </button>
+            <button class="btn-icon" style="width:32px;height:32px;" onclick="clearExerciseLog(${week},${dayIdx},${exIdx})" title="Clear logged weight/reps/RPE">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+            </button>
           </div>
           `}
         </div>
@@ -888,7 +891,10 @@ function renderDay() {
   if (!state.readOnly) {
     html += `
       <button class="btn-add" onclick="openAddModal(${week},${dayIdx})">+ Add Exercise</button>
-      <button class="btn btn-secondary btn-block mt-2" style="margin-top:16px;" onclick="resetDayCustom(${week},${dayIdx})">
+      <button class="btn btn-secondary btn-block mt-2" style="margin-top:16px;" onclick="clearDayLogs(${week},${dayIdx})">
+        Clear All Logs for This Day
+      </button>
+      <button class="btn btn-secondary btn-block mt-2" onclick="resetDayCustom(${week},${dayIdx})">
         Reset Day to Default
       </button>
     `;
@@ -1639,6 +1645,23 @@ function saveLog(week, dayIdx, exIdx, field, value) {
   if (!state.logs[key]) state.logs[key] = {};
   state.logs[key][field] = value;
   saveState();
+}
+
+function clearExerciseLog(week, dayIdx, exIdx) {
+  if (!confirm('Clear the logged weight, reps, and RPE for this exercise?')) return;
+  delete state.logs[getLogKey(week, dayIdx, exIdx)];
+  saveState();
+  render();
+}
+
+function clearDayLogs(week, dayIdx) {
+  if (!confirm('Clear all logged sets for this entire day? This cannot be undone.')) return;
+  const prefix = `${week}-${dayIdx}-`;
+  Object.keys(state.logs).forEach((key) => {
+    if (key.startsWith(prefix)) delete state.logs[key];
+  });
+  saveState();
+  render();
 }
 
 // ========== CUSTOM EXERCISES ==========
