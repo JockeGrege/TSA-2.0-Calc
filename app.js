@@ -1832,7 +1832,8 @@ async function deleteProfileHandler(profileId) {
     showToast("Can't delete your only profile");
     return;
   }
-  if (!confirm('Delete this profile? This cannot be undone.')) return;
+  const p = state.profiles.find((x) => x.id === profileId);
+  if (!confirm(`Delete "${p ? p.name : 'this profile'}"? This cannot be undone.`)) return;
   const uid = state.user.uid;
   await window.Firebase.deleteProfile(uid, profileId);
   state.profiles = await window.Firebase.listProfiles(uid);
