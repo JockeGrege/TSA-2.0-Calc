@@ -1119,3 +1119,12 @@ input[inputmode="decimal"], input[inputmode="numeric"] {
     padding: 20px;
   }
 }
+
+/* Program Table gets a wider layout on desktop, so its many columns
+   fit without needing to scroll sideways - the rest of the app stays
+   phone-width, since it's designed around a single-column card layout. */
+@media (min-width: 900px) {
+  #app.wide-view {
+    max-width: 1100px;
+  }
+}

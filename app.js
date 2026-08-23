@@ -324,6 +324,7 @@ function getLogKey(week, dayIdx, exIdx) {
 }
 
 // ========== RENDER ==========
+const appEl = document.getElementById('app');
 const mainEl = document.getElementById('main');
 const headerTitle = document.getElementById('header-title');
 const btnBack = document.getElementById('btn-back');
@@ -357,6 +358,7 @@ function render() {
   if (!state.user) state.view = 'auth';
 
   updateE1RMs();
+  appEl.classList.toggle('wide-view', state.view === 'table');
   btnBack.classList.toggle('hidden', state.view === 'home' || state.view === 'auth');
   btnSetup.classList.toggle('hidden', state.view === 'auth' || state.readOnly);
   btnProfile.classList.toggle('hidden', state.view === 'auth' || state.readOnly);
