@@ -743,13 +743,17 @@ function renderHome() {
   }
 
   html += `
-    <div class="card-title-row" style="margin-top:8px;">
-      <div class="card-title">Program Weeks</div>
-      <div class="flex gap-2 items-center">
-        <button class="link-btn" onclick="goProgress()">Progress</button>
-        <button class="link-btn" onclick="goTable(null)">View as Table</button>
-      </div>
+    <div class="form-row mt-2">
+      <button class="btn btn-secondary" onclick="goProgress()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+        Progress
+      </button>
+      <button class="btn btn-secondary" onclick="goTable(null)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+        View as Table
+      </button>
     </div>
+    <div class="card-title" style="margin-top:16px;">Program Weeks</div>
     <div class="week-list">`;
 
   for (let i = 1; i <= 9; i++) {
@@ -2237,6 +2241,7 @@ document.getElementById('btn-back').addEventListener('click', goBack);
 document.getElementById('btn-setup').addEventListener('click', goSetup);
 document.getElementById('btn-profile').addEventListener('click', goProfiles);
 document.getElementById('btn-plates').addEventListener('click', goPlates);
+document.getElementById('btn-progress').addEventListener('click', goProgress);
 document.getElementById('btn-exit-shared').addEventListener('click', exitSharedView);
 document.getElementById('import-profile-input').addEventListener('change', handleImportFileSelected);
 
