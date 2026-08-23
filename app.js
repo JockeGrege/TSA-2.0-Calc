@@ -448,6 +448,49 @@ function createTrackedLift(label) {
   return id;
 }
 
+function openManageTrackedLiftsModal() {
+  state.editing = { mode: 'manage-tracked-lifts' };
+  document.getElementById('modal-title').textContent = 'Manage Tracked Lifts';
+  document.getElementById('modal-save').classList.add('hidden');
+  renderManageTrackedLiftsModalBody();
+  document.getElementById('modal-overlay').classList.remove('hidden');
+}
+
+function renderManageTrackedLiftsModalBody() {
+  const entries = Object.entries(state.trackedLifts || {}).sort((a, b) => a[1].label.localeCompare(b[1].label));
+  document.getElementById('modal-body').innerHTML = `
+    <p class="note" style="margin-bottom:12px;">Deleting a tracked lift removes it from the Progress chart and un-tags it from every exercise that uses it. Logged sets themselves aren't deleted.</p>
+    <div class="plate-list">
+      ${entries.length === 0 ? '<p class="note">No tracked lifts yet.</p>' : entries.map(([id, t]) => `
+        <div class="plate-list-row">
+          <span style="display:flex;align-items:center;gap:8px;">
+            <span class="chart-legend-swatch" style="background:${t.color};"></span>
+            ${t.label}
+          </span>
+          <button class="btn-icon" style="width:28px;height:28px;flex:none;" onclick="deleteTrackedLift('${id}')" title="Delete">&times;</button>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function deleteTrackedLift(id) {
+  const t = state.trackedLifts[id];
+  if (!t) return;
+  if (!confirm(`Delete "${t.label}"? This removes it from the Progress chart and un-tags it from every exercise that uses it. This cannot be undone.`)) return;
+
+  delete state.trackedLifts[id];
+  Object.keys(state.customExercises).forEach((key) => {
+    state.customExercises[key].forEach((ex) => {
+      if (ex.trackedId === id) ex.trackedId = null;
+    });
+  });
+  delete state.progressHiddenLifts[id];
+  saveState();
+  renderManageTrackedLiftsModalBody();
+  showToast(`Deleted "${t.label}"`);
+}
+
 function getProgressCandidates() {
   const mode = state.progressFilterMode || 'all';
   const hidden = state.progressHiddenLifts || {};
@@ -617,10 +660,16 @@ function renderProgress() {
     return;
   }
 
+  const manageLink = (!state.readOnly && Object.keys(state.trackedLifts || {}).length > 0)
+    ? `<button class="link-btn" onclick="openManageTrackedLiftsModal()">Manage Tracked Lifts</button>`
+    : '';
+
   mainEl.innerHTML = `
     ${filterPills}
     <div class="card">${renderProgressChart(candidates, seriesByKey)}</div>
     <p class="note">Each point is your best estimated 1RM logged that week from working sets for that lift. "Start" is your Setup baseline (main lifts only). Weeks with nothing logged are skipped, not interpolated. Tap a point for details, or a legend entry to hide/show it.</p>
+    <p class="note">Estimated 1RM is calculated from the logged weight, reps, and RPE using the official TSA RPE-to-percentage chart when RPE is given, or a Brzycki-style formula when it isn't — the same method used for the Setup screen's e1RM and every load calculation in the program.</p>
+    ${manageLink ? `<div class="mt-2">${manageLink}</div>` : ''}
   `;
 }
 
@@ -2002,7 +2051,9 @@ function closeModal() {
   document.getElementById('modal-overlay').classList.add('hidden');
   document.getElementById('modal-save').classList.remove('hidden');
   document.getElementById('modal-save').textContent = 'Save';
+  const wasManagingTrackedLifts = state.editing && state.editing.mode === 'manage-tracked-lifts';
   state.editing = null;
+  if (wasManagingTrackedLifts) render(); // reflect any tracked-lift deletions on the Progress chart underneath
 }
 
 function saveModal() {
