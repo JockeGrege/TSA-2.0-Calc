@@ -119,6 +119,7 @@ const state = {
   plateBreakdownOpen: {}, // id -> boolean
   plateCalcWeight: '', // manual weight entry on the standalone Plate Calculator screen
   tableViewWeek: null, // null = all 9 weeks, 1-9 = a single week, in the Program Table view
+  openProfileMenuId: null, // id of the profile row whose "more actions" menu is open, if any
 
   // Auth / cloud sync
   user: null,
@@ -846,15 +847,18 @@ function renderProfiles() {
         <button class="btn-icon" style="width:32px;height:32px;flex:none;" onclick="event.stopPropagation();openShareModal('${p.id}')" title="Share (read-only)">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
         </button>
-        <button class="btn-icon" style="width:32px;height:32px;flex:none;" onclick="event.stopPropagation();exportProfileHandler('${p.id}')" title="Export">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        </button>
-        <button class="btn-icon" style="width:32px;height:32px;flex:none;" onclick="event.stopPropagation();resetProfileHandler('${p.id}')" title="Reset to Default">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 2.64-6.36"/><path d="M3 4v5h5"/></svg>
-        </button>
-        <button class="btn-icon" style="width:32px;height:32px;flex:none;" onclick="event.stopPropagation();deleteProfileHandler('${p.id}')" title="Delete">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
-        </button>
+        <div class="profile-menu-wrap">
+          <button class="btn-icon" style="width:32px;height:32px;flex:none;" onclick="event.stopPropagation();toggleProfileMenu('${p.id}')" title="More actions">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+          </button>
+          ${state.openProfileMenuId === p.id ? `
+            <div class="profile-menu">
+              <button onclick="event.stopPropagation();closeProfileMenu();exportProfileHandler('${p.id}')">Export</button>
+              <button onclick="event.stopPropagation();closeProfileMenu();resetProfileHandler('${p.id}')">Reset to Default</button>
+              <button class="profile-menu-danger" onclick="event.stopPropagation();closeProfileMenu();deleteProfileHandler('${p.id}')">Delete</button>
+            </div>
+          ` : ''}
+        </div>
       </div>
     `;
   });
@@ -866,6 +870,16 @@ function renderProfiles() {
     <button class="btn btn-secondary btn-block mt-2" onclick="signOutHandler()">Sign Out</button>
   `;
   mainEl.innerHTML = html;
+}
+
+function toggleProfileMenu(profileId) {
+  state.openProfileMenuId = state.openProfileMenuId === profileId ? null : profileId;
+  render();
+}
+
+function closeProfileMenu() {
+  state.openProfileMenuId = null;
+  render();
 }
 
 function renderBarbellVisual(breakdown) {
@@ -1801,6 +1815,13 @@ function openPlateCountModal(denom, returnToSettings) {
 // ========== EVENT LISTENERS ==========
 document.addEventListener('focusin', (e) => {
   if (e.target.tagName === 'INPUT' && (e.target.inputMode === 'decimal' || e.target.inputMode === 'numeric')) e.target.select();
+});
+
+document.addEventListener('click', (e) => {
+  if (state.openProfileMenuId && !e.target.closest('.profile-menu-wrap')) {
+    state.openProfileMenuId = null;
+    render();
+  }
 });
 
 document.getElementById('btn-back').addEventListener('click', goBack);
