@@ -361,6 +361,50 @@ input[inputmode="decimal"], input[inputmode="numeric"] {
   background: var(--bg-elevated);
 }
 
+.profile-menu-wrap {
+  position: relative;
+  flex: none;
+}
+
+.profile-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 6px;
+  min-width: 170px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  z-index: 20;
+}
+
+.profile-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 14px;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.profile-menu button:active {
+  background: var(--bg-card);
+}
+
+.profile-menu button.profile-menu-danger {
+  color: var(--danger);
+}
+
+.week-item-active {
+  border-color: var(--accent);
+  background: rgba(34, 211, 238, 0.08);
+}
+
 .week-num {
   width: 40px;
   height: 40px;
@@ -386,6 +430,16 @@ input[inputmode="decimal"], input[inputmode="numeric"] {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.week-info-flex {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.week-info-flex h3 {
+  min-width: 0;
 }
 
 .week-info p {
@@ -1066,6 +1120,11 @@ input[inputmode="decimal"], input[inputmode="numeric"] {
 .badge-green {
   background: rgba(74, 222, 128, 0.2);
   color: var(--green);
+}
+
+.badge-accent {
+  background: rgba(34, 211, 238, 0.2);
+  color: var(--accent);
 }
 
 /* Add exercise button */
