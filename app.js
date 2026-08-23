@@ -93,7 +93,7 @@ function defaultPlateSettings() {
 
 // ========== STATE ==========
 const state = {
-  view: 'home', // home | setup | week | day | auth | profiles | plates
+  view: 'home', // home | setup | week | day | auth | profiles | plates | table
   viewHistory: [], // back-stack of prior views; goBack() pops it
   currentWeek: null,
   currentDayIdx: 0,
@@ -118,6 +118,7 @@ const state = {
   // Plate breakdown UI (session-only; never saved or synced)
   plateBreakdownOpen: {}, // id -> boolean
   plateCalcWeight: '', // manual weight entry on the standalone Plate Calculator screen
+  tableViewWeek: null, // null = all 9 weeks, 1-9 = a single week, in the Program Table view
 
   // Auth / cloud sync
   user: null,
@@ -323,6 +324,7 @@ function getLogKey(week, dayIdx, exIdx) {
 }
 
 // ========== RENDER ==========
+const appEl = document.getElementById('app');
 const mainEl = document.getElementById('main');
 const headerTitle = document.getElementById('header-title');
 const btnBack = document.getElementById('btn-back');
@@ -356,6 +358,7 @@ function render() {
   if (!state.user) state.view = 'auth';
 
   updateE1RMs();
+  appEl.classList.toggle('wide-view', state.view === 'table');
   btnBack.classList.toggle('hidden', state.view === 'home' || state.view === 'auth');
   btnSetup.classList.toggle('hidden', state.view === 'auth' || state.readOnly);
   btnProfile.classList.toggle('hidden', state.view === 'auth' || state.readOnly);
@@ -377,6 +380,9 @@ function render() {
   } else if (state.view === 'plates') {
     headerTitle.textContent = 'Plate Calculator';
     renderPlateCalculator();
+  } else if (state.view === 'table') {
+    headerTitle.textContent = 'Program Table';
+    renderTableView();
   } else if (state.view === 'home') {
     headerTitle.textContent = 'TSA 9-Week';
     renderHome();
@@ -425,7 +431,12 @@ function renderHome() {
     `;
   }
 
-  html += `<div class="card-title" style="margin-top:8px;">Program Weeks</div><div class="week-list">`;
+  html += `
+    <div class="card-title-row" style="margin-top:8px;">
+      <div class="card-title">Program Weeks</div>
+      <button class="link-btn" onclick="goTable(null)">View as Table</button>
+    </div>
+    <div class="week-list">`;
 
   for (let i = 1; i <= 9; i++) {
     const w = PROGRAM[String(i)];
@@ -518,7 +529,14 @@ function renderWeek() {
   const w = PROGRAM[String(state.currentWeek)];
   if (!w) return;
 
-  let html = `<div class="day-header"><h2>Week ${state.currentWeek}</h2><p>${w.title}</p></div><div class="week-list">`;
+  let html = `
+    <div class="day-header">
+      <h2>Week ${state.currentWeek}</h2>
+      <p>${w.title}</p>
+    </div>
+    <button class="link-btn" style="margin-bottom:12px;" onclick="goTable(${state.currentWeek})">View as Table</button>
+    <div class="week-list">
+  `;
 
   w.days.forEach((day, idx) => {
     const exercises = getExercises(state.currentWeek, idx);
@@ -534,6 +552,75 @@ function renderWeek() {
     `;
   });
   html += `</div>`;
+  mainEl.innerHTML = html;
+}
+
+function renderTableViewDayTable(week, dayIdx, day) {
+  let rows = '';
+  getExercises(week, dayIdx).forEach((ex, exIdx) => {
+    const isMain = ex.lift && (ex.type === 'percentage' || (ex.type === 'rpe' && (ex.name.toLowerCase().includes('squat') || ex.name.toLowerCase().includes('bench') || ex.name.toLowerCase().includes('deadlift'))));
+    const load = (ex.type === 'percentage' && ex.percent != null && ex.lift) ? calcLoad(ex.percent, ex.lift) : null;
+    const log = state.logs[getLogKey(week, dayIdx, exIdx)] || {};
+    rows += `
+      <tr class="${isMain ? 'main-lift-row' : ''}">
+        <td class="col-exercise">${ex.name}</td>
+        <td>${ex.sets || '—'}</td>
+        <td>${ex.reps || '—'}</td>
+        <td>${ex.intensity || '—'}</td>
+        <td>${load != null ? load : '—'}</td>
+        <td class="col-logged">${log.weightUsed || '—'}</td>
+        <td class="col-logged">${log.repsDone || '—'}</td>
+        <td class="col-logged">${log.rpe || '—'}</td>
+      </tr>
+    `;
+  });
+
+  return `
+    <div class="program-day-block">
+      <div class="program-day-banner">${day.name}</div>
+      <div class="program-table-wrap">
+        <table class="program-table">
+          <thead>
+            <tr>
+              <th class="col-exercise">Exercise</th>
+              <th>Sets</th>
+              <th>Reps</th>
+              <th>Intensity</th>
+              <th>Load</th>
+              <th class="col-logged">Weight Used</th>
+              <th class="col-logged">Reps Done</th>
+              <th class="col-logged">RPE</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function renderTableView() {
+  const selectedWeek = state.tableViewWeek;
+  const weeks = selectedWeek ? [selectedWeek] : [1, 2, 3, 4, 5, 6, 7, 8, 9];
+
+  let html = `
+    <div class="choice-row" style="margin-bottom:16px;">
+      <button class="choice-btn ${selectedWeek == null ? 'active' : ''}" onclick="goTable(null)">All</button>
+      ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<button class="choice-btn ${selectedWeek === n ? 'active' : ''}" onclick="goTable(${n})">${n}</button>`).join('')}
+    </div>
+  `;
+
+  weeks.forEach((week) => {
+    const w = PROGRAM[String(week)];
+    if (!w) return;
+    html += `<div class="program-week-block">`;
+    html += `<div class="program-week-banner">${w.title}</div>`;
+    w.days.forEach((day, dayIdx) => {
+      html += renderTableViewDayTable(week, dayIdx, day);
+    });
+    html += `</div>`;
+  });
+
   mainEl.innerHTML = html;
 }
 
@@ -897,6 +984,11 @@ function goProfiles() {
 
 function goPlates() {
   navigateTo('plates');
+}
+
+function goTable(week) {
+  state.tableViewWeek = week ?? null;
+  navigateTo('table');
 }
 
 // ========== SETUP HANDLERS ==========

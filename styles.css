@@ -215,6 +215,18 @@ html, body {
   margin-bottom: 12px;
 }
 
+.card-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.card-title-row .card-title {
+  margin-bottom: 0;
+}
+
 /* Setup form */
 .form-group {
   margin-bottom: 16px;
@@ -587,6 +599,86 @@ input[inputmode="decimal"], input[inputmode="numeric"] {
 .warmup-table td {
   font-family: var(--mono);
   color: var(--text);
+}
+
+/* Program table (all-days / all-weeks compact view) */
+.program-week-block {
+  margin-bottom: 20px;
+}
+
+.program-week-banner {
+  background: var(--accent-dim);
+  color: var(--bg);
+  font-weight: 700;
+  text-align: center;
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 12px;
+  font-size: 0.9rem;
+}
+
+.program-day-block {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+.program-day-banner {
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-weight: 700;
+  text-align: center;
+  padding: 8px;
+  font-size: 0.85rem;
+}
+
+.program-table-wrap {
+  overflow-x: auto;
+}
+
+.program-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.program-table th,
+.program-table td {
+  padding: 8px 10px;
+  text-align: center;
+  border-top: 1px solid var(--border);
+}
+
+.program-table th {
+  color: var(--text-dim);
+  font-weight: 600;
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  border-top: none;
+  background: var(--bg-input);
+}
+
+.program-table .col-exercise {
+  text-align: left;
+  white-space: normal;
+  min-width: 140px;
+}
+
+.program-table td {
+  font-family: var(--mono);
+  color: var(--text);
+}
+
+.program-table .col-logged {
+  background: rgba(74, 222, 128, 0.08);
+}
+
+.program-table tr.main-lift-row .col-exercise {
+  font-weight: 700;
+  color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 /* Plate breakdown (inline companion) */
@@ -1025,5 +1117,17 @@ input[inputmode="decimal"], input[inputmode="numeric"] {
   .modal-overlay {
     align-items: center;
     padding: 20px;
+  }
+}
+
+/* Program Table gets a wider layout on larger screens (tablets in
+   landscape and up), so its many columns fit without needing to
+   scroll sideways - the rest of the app stays phone-width, since
+   it's designed around a single-column card layout. #app has no
+   explicit width, just max-width, so it still shrinks to fit any
+   viewport narrower than this cap. */
+@media (min-width: 760px) {
+  #app.wide-view {
+    max-width: 1100px;
   }
 }
