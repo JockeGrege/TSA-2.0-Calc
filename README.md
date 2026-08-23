@@ -84,6 +84,11 @@ This app needs its own Firebase project with Authentication and Firestore enable
 
 7. **(Optional) Firebase Hosting.** `firebase.json` already declares a hosting config pointing at the repo root, if you'd rather deploy there than to GitHub Pages: `npx firebase deploy --only hosting`.
 
+8. **(Recommended) Restrict the API key.** `firebase-config.js` is committed to the repo and its `apiKey` is visible to anyone — this is normal for Firebase web apps and isn't itself a vulnerability (it doesn't grant data access; the Firestore rules above are what actually do that). As an extra guardrail against quota abuse, restrict the key in the [Google Cloud Console](https://console.cloud.google.com/) (Firebase projects are Google Cloud projects, so this is the same project): **APIs & Services → Credentials**, open the key (usually named something like "Browser key (auto created by Firebase)"), then:
+   - Under **Application restrictions**, choose **HTTP referrers** and add every domain the app is served from, e.g. `https://yourusername.github.io/*` and `http://localhost:8080/*`.
+   - Under **API restrictions**, choose **Restrict key** and select only what this app actually calls: **Identity Toolkit API**, **Token Service API**, **Cloud Firestore API**, and **Firebase Installations API**.
+   - Save, then re-test sign-in (email/password and Google) on every domain you added. If something breaks, the browser console error will name the specific API to add back.
+
 ## Offline app shell
 `sw.js` caches the app shell (HTML/CSS/JS + the Firebase SDK) so a cold start works with no connection. There's no build step to hash filenames automatically, so bump `CACHE_VERSION` in `sw.js` by hand whenever any cached file changes — otherwise visitors keep getting the stale cached version.
 
