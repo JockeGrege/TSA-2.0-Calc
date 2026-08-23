@@ -453,7 +453,7 @@ function openManageTrackedLiftsModal() {
   document.getElementById('modal-title').textContent = 'Manage Tracked Lifts';
   document.getElementById('modal-save').classList.add('hidden');
   renderManageTrackedLiftsModalBody();
-  document.getElementById('modal-overlay').classList.remove('hidden');
+  openModalOverlay();
 }
 
 function renderManageTrackedLiftsModalBody() {
@@ -560,7 +560,7 @@ function showProgressPointDetail(key, week) {
   }
 
   document.getElementById('modal-body').innerHTML = body;
-  document.getElementById('modal-overlay').classList.remove('hidden');
+  openModalOverlay();
 }
 
 function renderProgressChart(candidates, seriesByKey) {
@@ -1332,6 +1332,42 @@ function renderPlateCalculator() {
   mainEl.innerHTML = html;
 }
 
+// ========== BROWSER HISTORY / BACK BUTTON ==========
+// Every view-navigation and every modal-open pushes one browser history entry, so the
+// Android hardware/gesture back button (which fires a real popstate only if there's
+// history to pop) can drive the exact same transitions as the on-screen back arrow and
+// modal-close buttons. Those on-screen actions keep doing their real work synchronously,
+// exactly as before, and just also consume the matching entry via history.back() -
+// suppressPopstate stops that self-triggered popstate from repeating the work.
+let suppressPopstate = false;
+
+function pushHistoryEntry() {
+  history.pushState({ tsaNav: true }, '', location.href);
+}
+
+function consumeHistoryEntry() {
+  suppressPopstate = true;
+  history.back();
+}
+
+function resetNavigationToRoot() {
+  const depth = state.viewHistory.length;
+  state.viewHistory = [];
+  if (depth > 0) {
+    suppressPopstate = true;
+    history.go(-depth);
+  }
+}
+
+window.addEventListener('popstate', () => {
+  if (suppressPopstate) { suppressPopstate = false; return; }
+  if (!document.getElementById('modal-overlay').classList.contains('hidden')) {
+    performCloseModal();
+  } else {
+    performGoBack();
+  }
+});
+
 // ========== NAVIGATION ==========
 // state.viewHistory is a back-stack: every navigateTo() push the view being left,
 // and goBack() pops it, so "back" always returns to wherever the user actually came
@@ -1339,18 +1375,24 @@ function renderPlateCalculator() {
 function navigateTo(view) {
   if (state.view !== view) {
     state.viewHistory.push(state.view);
+    pushHistoryEntry();
   }
   state.view = view;
   render();
 }
 
-function goBack() {
+function performGoBack() {
   state.view = state.viewHistory.pop() || 'home';
   render();
 }
 
+function goBack() {
+  performGoBack();
+  consumeHistoryEntry();
+}
+
 function goHome() {
-  state.viewHistory = [];
+  resetNavigationToRoot();
   state.view = 'home';
   render();
 }
@@ -1550,7 +1592,7 @@ function openNewProfileModal() {
       <input type="text" id="profile-name" placeholder="e.g. Block B - higher reps" />
     </div>
   `;
-  document.getElementById('modal-overlay').classList.remove('hidden');
+  openModalOverlay();
 }
 
 function openRenameProfileModal(profileId) {
@@ -1564,7 +1606,7 @@ function openRenameProfileModal(profileId) {
       <input type="text" id="profile-name" value="${p.name}" />
     </div>
   `;
-  document.getElementById('modal-overlay').classList.remove('hidden');
+  openModalOverlay();
 }
 
 function openDuplicateProfileModal() {
@@ -1577,7 +1619,7 @@ function openDuplicateProfileModal() {
       <input type="text" id="profile-name" value="${current ? current.name + ' (copy)' : ''}" />
     </div>
   `;
-  document.getElementById('modal-overlay').classList.remove('hidden');
+  openModalOverlay();
 }
 
 async function openShareModal(profileId) {
@@ -1588,7 +1630,7 @@ async function openShareModal(profileId) {
   document.getElementById('modal-title').textContent = `Share "${p.name}"`;
   document.getElementById('modal-save').classList.add('hidden');
   renderShareModalBody();
-  document.getElementById('modal-overlay').classList.remove('hidden');
+  openModalOverlay();
 }
 
 function renderShareModalBody() {
@@ -1989,7 +2031,7 @@ function openEditModal(week, dayIdx, exIdx) {
   });
   if (ex.lift) document.getElementById('edit-tracked-group').style.display = 'none';
 
-  document.getElementById('modal-overlay').classList.remove('hidden');
+  openModalOverlay();
 }
 
 function openAddModal(week, dayIdx) {
@@ -2054,16 +2096,26 @@ function openAddModal(week, dayIdx) {
     if (e.target.value) document.getElementById('edit-tracked-new-group').style.display = 'none';
   });
 
-  document.getElementById('modal-overlay').classList.remove('hidden');
+  openModalOverlay();
 }
 
-function closeModal() {
+function openModalOverlay() {
+  document.getElementById('modal-overlay').classList.remove('hidden');
+  pushHistoryEntry();
+}
+
+function performCloseModal() {
   document.getElementById('modal-overlay').classList.add('hidden');
   document.getElementById('modal-save').classList.remove('hidden');
   document.getElementById('modal-save').textContent = 'Save';
   const wasManagingTrackedLifts = state.editing && state.editing.mode === 'manage-tracked-lifts';
   state.editing = null;
   if (wasManagingTrackedLifts) render(); // reflect any tracked-lift deletions on the Progress chart underneath
+}
+
+function closeModal() {
+  performCloseModal();
+  consumeHistoryEntry();
 }
 
 function saveModal() {
@@ -2266,7 +2318,7 @@ function openPlateSettingsModal() {
     </div>
   `;
   document.getElementById('modal-save').classList.add('hidden');
-  document.getElementById('modal-overlay').classList.remove('hidden');
+  openModalOverlay();
 }
 
 function setBarbellWeight(val) {
@@ -2304,7 +2356,7 @@ function openPlateCountModal(denom, returnToSettings) {
   `;
   document.getElementById('modal-save').textContent = 'Update';
   document.getElementById('modal-save').classList.remove('hidden');
-  document.getElementById('modal-overlay').classList.remove('hidden');
+  openModalOverlay();
   if (!info.unlimited) document.getElementById('plate-count-input').focus();
 }
 
@@ -2449,7 +2501,7 @@ async function init() {
       state.profileId = null;
       state.profiles = [];
       state.view = 'auth';
-      state.viewHistory = [];
+      resetNavigationToRoot();
     }
     render();
   });
