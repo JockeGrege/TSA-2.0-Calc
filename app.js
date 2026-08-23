@@ -12,7 +12,8 @@ const RPE_CHART = {
   "8":    [0.922, 0.892, 0.863, 0.837, 0.811, 0.786, 0.762, 0.739, 0.707, 0.68, 0.653, 0.626],
   "7.5":  [0.907, 0.878, 0.85, 0.824, 0.799, 0.774, 0.751, 0.723, 0.694, 0.667, 0.64, 0.613],
   "7":    [0.892, 0.863, 0.837, 0.811, 0.786, 0.762, 0.739, 0.707, 0.68, 0.653, 0.626, 0.599],
-  "6.5":  [0.878, 0.85, 0.824, 0.799, 0.774, 0.751, 0.723, 0.694, 0.667, 0.64, 0.613, 0.586]
+  "6.5":  [0.878, 0.85, 0.824, 0.799, 0.774, 0.751, 0.723, 0.694, 0.667, 0.64, 0.613, 0.586],
+  "6":    [0.864, 0.837, 0.811, 0.787, 0.762, 0.740, 0.707, 0.681, 0.654, 0.627, 0.600, 0.573]
 };
 
 let PROGRAM = null; // loaded from JSON
@@ -93,7 +94,7 @@ function defaultPlateSettings() {
 
 // ========== STATE ==========
 const state = {
-  view: 'home', // home | setup | week | day | auth | profiles | plates | table | progress
+  view: 'home', // home | setup | week | day | auth | profiles | plates | table | progress | rpe-calc
   viewHistory: [], // back-stack of prior views; goBack() pops it
   currentWeek: null,
   currentDayIdx: 0,
@@ -125,6 +126,9 @@ const state = {
   openProfileMenuId: null, // id of the profile row whose "more actions" menu is open, if any
   progressHiddenLifts: {}, // key -> boolean, session-only per-lift chart visibility toggle in Progress view
   progressFilterMode: 'all', // 'all' | 'main' | 'accessory' - session-only, never saved or synced (changed too often to sync)
+
+  // RPE Calculator (session-only scratch calculator; never saved or synced)
+  rpeCalc: { weight: '', reps: '', rpe: '', targetReps: 1 },
 
   // Auth / cloud sync
   user: null,
@@ -235,6 +239,17 @@ function calcLoad(percent, lift) {
   const e1rm = state.maxes[lift]?.e1rm;
   if (!e1rm || percent == null) return null;
   return mround(e1rm * percent, state.rounding);
+}
+
+function rpeChartRowsForReps(reps, e1rm) {
+  const idx = Math.min(Math.max(parseInt(reps) || 1, 1), 12) - 1;
+  return Object.keys(RPE_CHART)
+    .map((rpeKey) => ({
+      rpe: parseFloat(rpeKey),
+      percent: RPE_CHART[rpeKey][idx],
+      weight: e1rm ? mround(e1rm * RPE_CHART[rpeKey][idx], state.rounding) : null,
+    }))
+    .sort((a, b) => b.rpe - a.rpe);
 }
 
 // ========== PLATE CALCULATOR ==========
@@ -677,6 +692,10 @@ function goProgress() {
   navigateTo('progress');
 }
 
+function goRpeCalc() {
+  navigateTo('rpe-calc');
+}
+
 // ========== RENDER ==========
 const appEl = document.getElementById('app');
 const mainEl = document.getElementById('main');
@@ -684,7 +703,8 @@ const headerTitle = document.getElementById('header-title');
 const btnBack = document.getElementById('btn-back');
 const btnSetup = document.getElementById('btn-setup');
 const btnProfile = document.getElementById('btn-profile');
-const btnPlates = document.getElementById('btn-plates');
+const btnRpeInfo = document.getElementById('btn-rpe-info');
+const headerTools = document.getElementById('header-tools');
 const bottomNav = document.getElementById('bottom-nav');
 const sharedBanner = document.getElementById('shared-banner');
 const sharedBannerText = document.getElementById('shared-banner-text');
@@ -701,7 +721,8 @@ function render() {
     btnBack.classList.add('hidden');
     btnSetup.classList.add('hidden');
     btnProfile.classList.add('hidden');
-    btnPlates.classList.add('hidden');
+    btnRpeInfo.classList.add('hidden');
+    headerTools.classList.add('hidden');
     syncIndicator.classList.add('hidden');
     bottomNav.classList.add('hidden');
     headerTitle.textContent = 'TSA 9-Week';
@@ -716,7 +737,8 @@ function render() {
   btnBack.classList.toggle('hidden', state.view === 'home' || state.view === 'auth');
   btnSetup.classList.toggle('hidden', state.view === 'auth' || state.readOnly);
   btnProfile.classList.toggle('hidden', state.view === 'auth' || state.readOnly);
-  btnPlates.classList.toggle('hidden', state.view === 'auth');
+  btnRpeInfo.classList.toggle('hidden', state.view !== 'rpe-calc');
+  headerTools.classList.toggle('hidden', state.view === 'auth');
   setSyncStatus(state.syncStatus);
   bottomNav.classList.add('hidden');
   sharedBanner.classList.toggle('hidden', !state.readOnly || state.view === 'auth');
@@ -740,6 +762,9 @@ function render() {
   } else if (state.view === 'progress') {
     headerTitle.textContent = 'Progress';
     renderProgress();
+  } else if (state.view === 'rpe-calc') {
+    headerTitle.textContent = 'RPE Calculator';
+    renderRpeCalc();
   } else if (state.view === 'home') {
     headerTitle.textContent = 'TSA 9-Week';
     renderHome();
@@ -1330,6 +1355,106 @@ function renderPlateCalculator() {
     </div>
   `;
   mainEl.innerHTML = html;
+}
+
+// ========== RPE CALCULATOR ==========
+const RPE_CALC_REPS_OPTIONS = Array.from({ length: 12 }, (_, i) => i + 1);
+const RPE_CALC_RPE_OPTIONS = ['10', '9.5', '9', '8.5', '8', '7.5', '7', '6.5', '6'];
+
+function renderRpeCalc() {
+  const rc = state.rpeCalc;
+  let html = `
+    <div class="form-row">
+      <div class="form-group">
+        <label>Weight (${getPlateUnit()})</label>
+        <input type="text" inputmode="decimal" placeholder="0"
+          value="${rc.weight}"
+          onchange="this.value = updateRpeCalc('weight', this.value)"
+          oninput="updateRpeCalc('weight', this.value)" />
+      </div>
+      <div class="form-group">
+        <label>Reps</label>
+        <select onchange="updateRpeCalc('reps', this.value)">
+          <option value="">—</option>
+          ${RPE_CALC_REPS_OPTIONS.map((n) => `<option value="${n}" ${String(rc.reps) === String(n) ? 'selected' : ''}>${n}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>RPE</label>
+        <select onchange="updateRpeCalc('rpe', this.value)">
+          <option value="">—</option>
+          ${RPE_CALC_RPE_OPTIONS.map((v) => `<option value="${v}" ${String(rc.rpe) === v ? 'selected' : ''}>${v}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div id="rpe-calc-results">${renderRpeCalcResults()}</div>
+  `;
+  mainEl.innerHTML = html;
+}
+
+function renderRpeCalcResults() {
+  const rc = state.rpeCalc;
+  const e1rm = estimate1RM(rc.weight, rc.reps, rc.rpe);
+
+  if (e1rm == null) {
+    return `<p class="note">Enter your last set for weight suggestions</p>`;
+  }
+
+  const unit = getPlateUnit();
+  const rows = rpeChartRowsForReps(rc.targetReps, e1rm);
+
+  return `
+    <div class="card-title" style="margin-top:16px;">Estimated 1RM</div>
+    <div class="card"><div class="e1rm">${e1rm} ${unit}</div></div>
+    <div class="card-title" style="margin-top:16px;">RPE chart with weight suggestions</div>
+    <div class="card">
+      <p class="note" style="margin-bottom:8px;">How many reps is your next set?</p>
+      <div class="choice-row mb-2">
+        ${RPE_CALC_REPS_OPTIONS.map((n) => `<button class="choice-btn ${rc.targetReps === n ? 'active' : ''}" onclick="setRpeCalcTargetReps(${n})">${n}</button>`).join('')}
+      </div>
+      <table class="warmup-table">
+        <thead><tr><th>RPE</th><th>% of 1RM</th><th>${unit}</th></tr></thead>
+        <tbody>
+          ${rows.map((row) => `<tr><td>${row.rpe.toFixed(1)}</td><td>${(row.percent * 100).toFixed(1)}</td><td>${row.weight}</td></tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function refreshRpeCalcResults() {
+  const el = document.getElementById('rpe-calc-results');
+  if (el) el.innerHTML = renderRpeCalcResults();
+}
+
+function updateRpeCalc(field, value) {
+  const sanitized = field === 'weight' ? sanitizeNonNegativeDecimal(value) : value;
+  state.rpeCalc[field] = sanitized;
+  refreshRpeCalcResults();
+  return sanitized;
+}
+
+function setRpeCalcTargetReps(n) {
+  state.rpeCalc.targetReps = n;
+  refreshRpeCalcResults();
+}
+
+function openRpeInfoModal() {
+  state.editing = { mode: 'rpe-info' };
+  document.getElementById('modal-title').textContent = 'About the RPE Calculator';
+  document.getElementById('modal-save').classList.add('hidden');
+  document.getElementById('modal-body').innerHTML = `
+    <p class="note">
+      Estimated 1RM uses the same RPE chart and formula as the rest of the app: the logged weight, reps, and RPE
+      are looked up in the Mike Tuchscherer / Reactive Training Systems RPE chart to get a percentage of your true 1RM,
+      or a Brzycki-style formula when no RPE is given.
+    </p>
+    <p class="note" style="margin-top:12px;">
+      The "RPE chart with weight suggestions" table works in reverse: for the number of reps you pick, it shows what
+      weight to load at every RPE from 10 down to 6, based on that estimated 1RM.
+    </p>
+  `;
+  openModalOverlay();
 }
 
 // ========== BROWSER HISTORY / BACK BUTTON ==========
@@ -2378,6 +2503,8 @@ document.getElementById('btn-setup').addEventListener('click', goSetup);
 document.getElementById('btn-profile').addEventListener('click', goProfiles);
 document.getElementById('btn-plates').addEventListener('click', goPlates);
 document.getElementById('btn-progress').addEventListener('click', goProgress);
+document.getElementById('btn-rpe').addEventListener('click', goRpeCalc);
+document.getElementById('btn-rpe-info').addEventListener('click', openRpeInfoModal);
 document.getElementById('btn-exit-shared').addEventListener('click', exitSharedView);
 document.getElementById('import-profile-input').addEventListener('change', handleImportFileSelected);
 

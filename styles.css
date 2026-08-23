@@ -72,6 +72,13 @@ html, body {
   gap: 12px;
 }
 
+.header-tools {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
 .header h1 {
   flex: 1;
   font-size: 1.15rem;
