@@ -37,6 +37,8 @@ const DEFAULT_PROFILE_DATA = {
   customExercises: {},
   logs: {},
   trackedLifts: {},
+  trackSbd: true,
+  weekTitles: {},
   viewerEmails: [],
   plateSettings: {
     barbellKg: 20,
@@ -177,7 +179,9 @@ async function createBlueprint(uid, name, data) {
     rounding: data.rounding,
     customExercises: data.customExercises,
     plateSettings: data.plateSettings,
-    trackedLifts: data.trackedLifts
+    trackedLifts: data.trackedLifts,
+    trackSbd: data.trackSbd !== false,
+    weekTitles: data.weekTitles || {}
   });
   return ref.id;
 }
