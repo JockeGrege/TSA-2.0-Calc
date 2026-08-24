@@ -701,6 +701,7 @@ const appEl = document.getElementById('app');
 const mainEl = document.getElementById('main');
 const headerTitle = document.getElementById('header-title');
 const btnBack = document.getElementById('btn-back');
+const btnHome = document.getElementById('btn-home');
 const btnSetup = document.getElementById('btn-setup');
 const btnProfile = document.getElementById('btn-profile');
 const headerTools = document.getElementById('header-tools');
@@ -718,6 +719,7 @@ function showToast(msg, duration = 2000) {
 function render() {
   if (!state.authReady) {
     btnBack.classList.add('hidden');
+    btnHome.classList.add('hidden');
     btnSetup.classList.add('hidden');
     btnProfile.classList.add('hidden');
     headerTools.classList.add('hidden');
@@ -733,6 +735,7 @@ function render() {
   updateE1RMs();
   appEl.classList.toggle('wide-view', state.view === 'table' || state.view === 'progress');
   btnBack.classList.toggle('hidden', state.view === 'home' || state.view === 'auth');
+  btnHome.classList.toggle('hidden', state.view === 'home' || state.view === 'auth');
   btnSetup.classList.toggle('hidden', state.view === 'auth' || state.readOnly);
   btnProfile.classList.toggle('hidden', state.view === 'auth' || state.readOnly);
   headerTools.classList.toggle('hidden', state.view === 'auth');
@@ -1426,7 +1429,8 @@ function renderRpeCalcResults() {
         <tbody>
           ${rows.map((row) => {
             const weight = rc.roundIncrement ? mround(row.weight, rc.roundIncrement) : row.weight;
-            return `<tr><td>${row.rpe.toFixed(1)}</td><td>${(row.percent * 100).toFixed(1)}</td><td>${weight.toFixed(decimals)}</td></tr>`;
+            const isHalf = Math.abs(row.rpe % 1) > 0.01;
+            return `<tr class="${isHalf ? 'row-half' : ''}"><td>${row.rpe.toFixed(1)}</td><td>${(row.percent * 100).toFixed(1)}</td><td>${weight.toFixed(decimals)}</td></tr>`;
           }).join('')}
         </tbody>
       </table>
@@ -2515,6 +2519,8 @@ document.addEventListener('click', (e) => {
 });
 
 document.getElementById('btn-back').addEventListener('click', goBack);
+
+document.getElementById('btn-home').addEventListener('click', goHome);
 
 document.getElementById('btn-setup').addEventListener('click', goSetup);
 document.getElementById('btn-profile').addEventListener('click', goProfiles);

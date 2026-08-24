@@ -748,6 +748,10 @@ input.rpe-red {
   color: var(--text);
 }
 
+.warmup-table tr.row-half td {
+  background: rgba(148, 163, 184, 0.12);
+}
+
 /* Program table (all-days / all-weeks compact view) */
 .program-week-block {
   margin-bottom: 20px;
