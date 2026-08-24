@@ -357,6 +357,11 @@ function getLogKey(week, dayIdx, exIdx) {
 // ========== PROGRESS ==========
 const FIXED_LIFTS = ['squat', 'bench', 'deadlift'];
 
+// Populated fresh by every renderProgress() call, so showProgressPointDetail() (clicking
+// a chart point) can reuse that just-computed series instead of recomputing it - always
+// current for whatever's on screen, no manual invalidation needed.
+let progressSeriesCache = {};
+
 function isMainLiftExercise(ex) {
   return !!(ex.lift && (ex.type === 'percentage' || (ex.type === 'rpe' && (ex.name.toLowerCase().includes('squat') || ex.name.toLowerCase().includes('bench') || ex.name.toLowerCase().includes('deadlift')))));
 }
@@ -548,7 +553,8 @@ function showProgressPointDetail(key, week) {
     || (FIXED_LIFTS.includes(key) ? { key, label: LIFT_LABEL[key] } : null);
   if (!candidate) return;
 
-  const point = computeLiftProgress(key)[week];
+  const series = progressSeriesCache[key] || computeLiftProgress(key);
+  const point = series[week];
 
   state.editing = { mode: 'progress-point' };
   document.getElementById('modal-title').textContent = `${candidate.label} — ${week === 0 ? 'Start' : 'Week ' + week}`;
@@ -656,6 +662,7 @@ function renderProgress() {
   const candidates = getProgressCandidates();
   const seriesByKey = {};
   candidates.forEach((c) => { seriesByKey[c.key] = computeLiftProgress(c.key); });
+  progressSeriesCache = seriesByKey;
 
   const hasAnyData = candidates.some((c) => seriesByKey[c.key].some((p) => p != null));
 
@@ -1589,7 +1596,8 @@ function updateMax(lift, field, value) {
 }
 
 function updateRounding(val) {
-  state.rounding = parseFloat(val);
+  const parsed = parseFloat(val);
+  if (!isNaN(parsed)) state.rounding = parsed;
   saveState();
 }
 
@@ -1681,26 +1689,25 @@ async function signOutHandler() {
 }
 
 // ========== PROFILES ==========
-async function applyProfileData(profileId) {
-  const data = await window.Firebase.loadProfileData(state.user.uid, profileId);
-  if (data) {
-    if (data.maxes) state.maxes = data.maxes;
-    if (data.rounding) state.rounding = data.rounding;
-    if (data.customExercises) state.customExercises = data.customExercises;
-    if (data.logs) state.logs = data.logs;
-    if (data.plateSettings) state.plateSettings = data.plateSettings;
-    state.trackedLifts = data.trackedLifts || {};
-  }
-}
-
+// Returns a promise that resolves once the first snapshot has been received, so callers
+// can await the initial load without a separate one-shot getDoc before this attaches -
+// the listener's own first callback IS that initial read.
 function subscribeToProfile(profileId) {
   if (state.profileUnsubscribe) state.profileUnsubscribe();
+  let resolveFirstSnapshot;
+  const firstSnapshot = new Promise((resolve) => { resolveFirstSnapshot = resolve; });
+  let gotFirstSnapshot = false;
   state.profileUnsubscribe = window.Firebase.watchCurrentProfile(state.user.uid, profileId, (data) => {
+    if (!gotFirstSnapshot) {
+      gotFirstSnapshot = true;
+      resolveFirstSnapshot();
+    }
     // A local write is still queued or in flight (saveEpoch ahead of confirmedEpoch) - this
     // snapshot can only be a stale echo of an older write, so applying it would clobber a
     // newer local change (e.g. an edit immediately followed by a reset). Skip it; once our
     // own pending write confirms, the next snapshot will correctly reflect it.
     if (confirmedEpoch < saveEpoch) return;
+    if (!data) return;
     const active = document.activeElement;
     const isEditingInput = active && mainEl.contains(active) && (active.tagName === 'INPUT' || active.tagName === 'SELECT');
     if (data.maxes) state.maxes = data.maxes;
@@ -1711,6 +1718,7 @@ function subscribeToProfile(profileId) {
     state.trackedLifts = data.trackedLifts || {};
     if (!isEditingInput) render();
   });
+  return firstSnapshot;
 }
 
 async function switchProfile(profileId) {
@@ -1722,8 +1730,7 @@ async function switchProfile(profileId) {
   const uid = state.user.uid;
   await window.Firebase.setCurrentProfileId(uid, profileId);
   state.profileId = profileId;
-  await applyProfileData(profileId);
-  subscribeToProfile(profileId);
+  await subscribeToProfile(profileId);
   state.view = 'home';
   render();
   showToast('Switched profile');
@@ -2321,6 +2328,7 @@ function saveModal() {
   } else if (type === 'rpe' && intensity) {
     const match = intensity.toUpperCase().match(/RPE\s*([\d.]+)/);
     if (match) rpe = parseFloat(match[1]);
+    if (isNaN(rpe)) rpe = null;
   }
 
   const trackedSel = document.getElementById('edit-tracked').value;
@@ -2358,13 +2366,20 @@ function deleteExercise() {
 
   const { week, dayIdx, exIdx } = state.editing;
   let exercises = getExercises(week, dayIdx);
+  const oldLength = exercises.length;
   exercises.splice(exIdx, 1);
   setExercises(week, dayIdx, exercises);
 
-  // Clean up log
-  const key = getLogKey(week, dayIdx, exIdx);
-  delete state.logs[key];
-  // Shift subsequent logs? For simplicity, leave orphaned keys (harmless)
+  // Logs are keyed by array index, so every exercise after the deleted one shifts
+  // down by one slot too - without this, a later exercise would silently inherit
+  // whatever log used to belong to the one that came right after it.
+  for (let i = exIdx; i < oldLength - 1; i++) {
+    const nextKey = getLogKey(week, dayIdx, i + 1);
+    const key = getLogKey(week, dayIdx, i);
+    if (state.logs[nextKey]) state.logs[key] = state.logs[nextKey];
+    else delete state.logs[key];
+  }
+  delete state.logs[getLogKey(week, dayIdx, oldLength - 1)];
   saveState();
   closeModal();
   render();
@@ -2547,8 +2562,8 @@ function waitForFirebase() {
 }
 
 async function loadUserProfileContext(uid) {
-  await window.Firebase.ensureUserDoc(uid, state.user.email);
-  let profileId = await window.Firebase.getCurrentProfileId(uid);
+  const userData = await window.Firebase.ensureUserDoc(uid, state.user.email);
+  let profileId = userData.currentProfileId || null;
 
   if (!profileId) {
     profileId = await window.Firebase.importLegacyLocalStorageIfNeeded(uid);
@@ -2560,8 +2575,7 @@ async function loadUserProfileContext(uid) {
 
   state.profileId = profileId;
   if (profileId) {
-    await applyProfileData(profileId);
-    subscribeToProfile(profileId);
+    await subscribeToProfile(profileId);
   }
   state.profiles = await window.Firebase.listProfiles(uid);
   if (state.view === 'auth') {
@@ -2638,19 +2652,25 @@ async function init() {
     state.authReady = true;
     state.authError = '';
 
-    if (user && state.sharedView) {
-      await loadSharedProfileContext();
-    } else if (user) {
-      await loadUserProfileContext(user.uid);
-    } else {
-      if (state.profileUnsubscribe) {
-        state.profileUnsubscribe();
-        state.profileUnsubscribe = null;
+    try {
+      if (user && state.sharedView) {
+        await loadSharedProfileContext();
+      } else if (user) {
+        await loadUserProfileContext(user.uid);
+      } else {
+        if (state.profileUnsubscribe) {
+          state.profileUnsubscribe();
+          state.profileUnsubscribe = null;
+        }
+        state.profileId = null;
+        state.profiles = [];
+        state.view = 'auth';
+        resetNavigationToRoot();
       }
-      state.profileId = null;
-      state.profiles = [];
+    } catch (e) {
+      console.error('Failed to load profile data', e);
       state.view = 'auth';
-      resetNavigationToRoot();
+      state.authError = 'Something went wrong loading your data. Please try signing in again.';
     }
     render();
   });

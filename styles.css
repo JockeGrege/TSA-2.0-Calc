@@ -135,10 +135,6 @@ html, body {
   background: var(--bg-elevated);
 }
 
-.btn-icon.hidden {
-  visibility: hidden;
-}
-
 .sync-dot {
   width: 8px;
   height: 8px;
@@ -231,18 +227,6 @@ html, body {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   margin-bottom: 12px;
-}
-
-.card-title-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.card-title-row .card-title {
-  margin-bottom: 0;
 }
 
 /* Setup form */
@@ -348,11 +332,6 @@ input[inputmode="decimal"], input[inputmode="numeric"] {
 .btn-block {
   width: 100%;
   margin-top: 8px;
-}
-
-.btn-sm {
-  padding: 8px 12px;
-  font-size: 0.85rem;
 }
 
 /* Week list */
@@ -1228,14 +1207,10 @@ input.rpe-red {
 
 /* Utility */
 .hidden { display: none !important; }
-.text-center { text-align: center; }
 .mt-2 { margin-top: 8px; }
 .mt-4 { margin-top: 16px; }
 .mb-2 { margin-bottom: 8px; }
 .flex { display: flex; }
-.gap-2 { gap: 8px; }
-.items-center { align-items: center; }
-.justify-between { justify-content: space-between; }
 
 .note {
   font-size: 0.8rem;
@@ -1251,16 +1226,6 @@ input.rpe-red {
   font-size: 0.7rem;
   font-weight: 600;
   text-transform: uppercase;
-}
-
-.badge-yellow {
-  background: rgba(250, 204, 21, 0.2);
-  color: var(--yellow);
-}
-
-.badge-green {
-  background: rgba(74, 222, 128, 0.2);
-  color: var(--green);
 }
 
 .badge-accent {

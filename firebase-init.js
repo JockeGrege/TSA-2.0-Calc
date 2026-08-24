@@ -95,19 +95,11 @@ async function ensureUserDoc(uid, email) {
   const ref = userDocRef(uid);
   const snap = await getDoc(ref);
   if (!snap.exists()) {
-    await setDoc(ref, {
-      email: email || null,
-      currentProfileId: null,
-      createdAt: serverTimestamp()
-    });
-    return null;
+    const data = { email: email || null, currentProfileId: null, createdAt: serverTimestamp() };
+    await setDoc(ref, data);
+    return data;
   }
   return snap.data();
-}
-
-async function getCurrentProfileId(uid) {
-  const snap = await getDoc(userDocRef(uid));
-  return snap.exists() ? snap.data().currentProfileId || null : null;
 }
 
 async function setCurrentProfileId(uid, profileId) {
@@ -213,7 +205,6 @@ window.Firebase = {
   signInGoogle,
   signOutUser,
   ensureUserDoc,
-  getCurrentProfileId,
   setCurrentProfileId,
   listProfiles,
   createProfile,
