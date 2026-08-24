@@ -826,7 +826,8 @@ function render() {
     renderSetup();
   } else if (state.view === 'week') {
     const w = PROGRAM[String(state.currentWeek)];
-    headerTitle.textContent = w?.title?.replace(/^Week \d+\s*-\s*/, '') || `Week ${state.currentWeek}`;
+    const weekTitle = state.weekTitles?.[state.currentWeek] || w?.title || `Week ${state.currentWeek}`;
+    headerTitle.textContent = weekTitle.replace(/^Week \d+\s*-\s*/, '');
     renderWeek();
   } else if (state.view === 'day') {
     const w = PROGRAM[String(state.currentWeek)];
@@ -1115,7 +1116,7 @@ function renderDay() {
   let html = `
     <div class="day-header">
       <h2>${day.name}</h2>
-      <p>${w.title}</p>
+      <p>${state.weekTitles?.[week] || w.title}</p>
     </div>
   `;
 
