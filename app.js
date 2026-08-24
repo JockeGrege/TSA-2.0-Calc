@@ -468,10 +468,18 @@ function createTrackedLift(label) {
   return id;
 }
 
-function openManageTrackedLiftsModal() {
-  state.editing = { mode: 'manage-tracked-lifts' };
-  document.getElementById('modal-title').textContent = 'Manage Tracked Lifts';
+// Shared setup for a Save-less, info-only modal: sets state.editing, the title, and
+// hides the Save button. Callers fill #modal-body and call openModalOverlay() themselves,
+// since how the body gets built (inline, a reusable render function, or after an async
+// fetch) differs per caller.
+function beginInfoModal(editing, title) {
+  state.editing = editing;
+  document.getElementById('modal-title').textContent = title;
   document.getElementById('modal-save').classList.add('hidden');
+}
+
+function openManageTrackedLiftsModal() {
+  beginInfoModal({ mode: 'manage-tracked-lifts' }, 'Manage Tracked Lifts');
   renderManageTrackedLiftsModalBody();
   openModalOverlay();
 }
@@ -556,9 +564,7 @@ function showProgressPointDetail(key, week) {
   const series = progressSeriesCache[key] || computeLiftProgress(key);
   const point = series[week];
 
-  state.editing = { mode: 'progress-point' };
-  document.getElementById('modal-title').textContent = `${candidate.label} — ${week === 0 ? 'Start' : 'Week ' + week}`;
-  document.getElementById('modal-save').classList.add('hidden');
+  beginInfoModal({ mode: 'progress-point' }, `${candidate.label} — ${week === 0 ? 'Start' : 'Week ' + week}`);
 
   let body;
   if (week === 0) {
@@ -1468,9 +1474,7 @@ function setRpeCalcTargetReps(n) {
 }
 
 function openRpeInfoModal() {
-  state.editing = { mode: 'rpe-info' };
-  document.getElementById('modal-title').textContent = 'About the RPE Calculator';
-  document.getElementById('modal-save').classList.add('hidden');
+  beginInfoModal({ mode: 'rpe-info' }, 'About the RPE Calculator');
   document.getElementById('modal-body').innerHTML = `
     <p class="note">
       Estimated 1RM uses the same RPE chart and formula as the rest of the app: the logged weight, reps, and RPE
@@ -1685,7 +1689,12 @@ async function signOutHandler() {
     state.profileUnsubscribe();
     state.profileUnsubscribe = null;
   }
-  await window.Firebase.signOutUser();
+  try {
+    await window.Firebase.signOutUser();
+  } catch (e) {
+    console.error('Sign out failed', e);
+    showToast('Sign out failed. Please try again.');
+  }
 }
 
 // ========== PROFILES ==========
@@ -1727,63 +1736,59 @@ async function switchProfile(profileId) {
     render();
     return;
   }
-  const uid = state.user.uid;
-  await window.Firebase.setCurrentProfileId(uid, profileId);
-  state.profileId = profileId;
-  await subscribeToProfile(profileId);
-  state.view = 'home';
-  render();
-  showToast('Switched profile');
+  try {
+    const uid = state.user.uid;
+    await window.Firebase.setCurrentProfileId(uid, profileId);
+    state.profileId = profileId;
+    await subscribeToProfile(profileId);
+    state.view = 'home';
+    render();
+    showToast('Switched profile');
+  } catch (e) {
+    console.error('Failed to switch profile', e);
+    showToast('Could not switch profile. Please try again.');
+  }
 }
 
-function openNewProfileModal() {
-  state.editing = { mode: 'new-profile' };
-  document.getElementById('modal-title').textContent = 'New Profile';
+function openProfileNameModal(mode, title, prefill, profileId) {
+  state.editing = profileId != null ? { mode, profileId } : { mode };
+  document.getElementById('modal-title').textContent = title;
   document.getElementById('modal-body').innerHTML = `
     <div class="form-group">
       <label>Name</label>
-      <input type="text" id="profile-name" placeholder="e.g. Block B - higher reps" />
+      <input type="text" id="profile-name" placeholder="e.g. Block B - higher reps" value="${prefill || ''}" />
     </div>
   `;
   openModalOverlay();
+}
+
+function openNewProfileModal() {
+  openProfileNameModal('new-profile', 'New Profile', '');
 }
 
 function openRenameProfileModal(profileId) {
   const p = state.profiles.find((x) => x.id === profileId);
   if (!p) return;
-  state.editing = { mode: 'rename-profile', profileId };
-  document.getElementById('modal-title').textContent = 'Rename Profile';
-  document.getElementById('modal-body').innerHTML = `
-    <div class="form-group">
-      <label>Name</label>
-      <input type="text" id="profile-name" value="${p.name}" />
-    </div>
-  `;
-  openModalOverlay();
+  openProfileNameModal('rename-profile', 'Rename Profile', p.name, profileId);
 }
 
 function openDuplicateProfileModal() {
   const current = state.profiles.find((p) => p.id === state.profileId);
-  state.editing = { mode: 'duplicate-profile' };
-  document.getElementById('modal-title').textContent = 'Duplicate Profile';
-  document.getElementById('modal-body').innerHTML = `
-    <div class="form-group">
-      <label>Name</label>
-      <input type="text" id="profile-name" value="${current ? current.name + ' (copy)' : ''}" />
-    </div>
-  `;
-  openModalOverlay();
+  openProfileNameModal('duplicate-profile', 'Duplicate Profile', current ? current.name + ' (copy)' : '');
 }
 
 async function openShareModal(profileId) {
   const p = state.profiles.find((x) => x.id === profileId);
   if (!p) return;
-  const data = await window.Firebase.loadProfileData(state.user.uid, profileId);
-  state.editing = { mode: 'share-profile', profileId, emails: (data && data.viewerEmails) || [] };
-  document.getElementById('modal-title').textContent = `Share "${p.name}"`;
-  document.getElementById('modal-save').classList.add('hidden');
-  renderShareModalBody();
-  openModalOverlay();
+  try {
+    const data = await window.Firebase.loadProfileData(state.user.uid, profileId);
+    beginInfoModal({ mode: 'share-profile', profileId, emails: (data && data.viewerEmails) || [] }, `Share "${p.name}"`);
+    renderShareModalBody();
+    openModalOverlay();
+  } catch (e) {
+    console.error('Failed to open share modal', e);
+    showToast('Could not load sharing settings. Please try again.');
+  }
 }
 
 function renderShareModalBody() {
@@ -1828,15 +1833,29 @@ async function addViewerEmail() {
     return;
   }
   state.editing.emails.push(email);
-  await window.Firebase.setViewerEmails(state.user.uid, state.editing.profileId, state.editing.emails);
-  renderShareModalBody();
-  showToast('Shared with ' + email);
+  try {
+    await window.Firebase.setViewerEmails(state.user.uid, state.editing.profileId, state.editing.emails);
+    renderShareModalBody();
+    showToast('Shared with ' + email);
+  } catch (e) {
+    console.error('Failed to add viewer email', e);
+    state.editing.emails.pop();
+    renderShareModalBody();
+    showToast('Could not share with that email. Please try again.');
+  }
 }
 
 async function removeViewerEmail(idx) {
-  state.editing.emails.splice(idx, 1);
-  await window.Firebase.setViewerEmails(state.user.uid, state.editing.profileId, state.editing.emails);
-  renderShareModalBody();
+  const [removed] = state.editing.emails.splice(idx, 1);
+  try {
+    await window.Firebase.setViewerEmails(state.user.uid, state.editing.profileId, state.editing.emails);
+    renderShareModalBody();
+  } catch (e) {
+    console.error('Failed to remove viewer email', e);
+    state.editing.emails.splice(idx, 0, removed);
+    renderShareModalBody();
+    showToast('Could not remove that email. Please try again.');
+  }
 }
 
 function copyShareLink() {
@@ -1847,16 +1866,24 @@ function copyShareLink() {
   );
 }
 
-async function createProfileHandler(name) {
-  const uid = state.user.uid;
-  await window.Firebase.createProfile(uid, name, {});
-  state.profiles = await window.Firebase.listProfiles(uid);
-  showToast('Profile created');
+// Shared tail for actions that change the profile list: re-fetch it, toast, re-render.
+async function refreshProfilesAndToast(message) {
+  state.profiles = await window.Firebase.listProfiles(state.user.uid);
+  showToast(message);
   render();
 }
 
+async function createProfileHandler(name) {
+  try {
+    await window.Firebase.createProfile(state.user.uid, name, {});
+    await refreshProfilesAndToast('Profile created');
+  } catch (e) {
+    console.error('Failed to create profile', e);
+    showToast('Could not create profile. Please try again.');
+  }
+}
+
 async function duplicateProfileHandler(name) {
-  const uid = state.user.uid;
   const seed = {
     maxes: state.maxes,
     rounding: state.rounding,
@@ -1864,10 +1891,13 @@ async function duplicateProfileHandler(name) {
     logs: state.logs,
     plateSettings: state.plateSettings
   };
-  await window.Firebase.createProfile(uid, name, seed);
-  state.profiles = await window.Firebase.listProfiles(uid);
-  showToast('Profile duplicated');
-  render();
+  try {
+    await window.Firebase.createProfile(state.user.uid, name, seed);
+    await refreshProfilesAndToast('Profile duplicated');
+  } catch (e) {
+    console.error('Failed to duplicate profile', e);
+    showToast('Could not duplicate profile. Please try again.');
+  }
 }
 
 async function exportProfileHandler(profileId) {
@@ -1981,11 +2011,8 @@ async function importParsedProfile(parsed) {
   }
 
   try {
-    const uid = state.user.uid;
-    await window.Firebase.createProfile(uid, name, seed);
-    state.profiles = await window.Firebase.listProfiles(uid);
-    showToast(`Imported as "${name}"`);
-    render();
+    await window.Firebase.createProfile(state.user.uid, name, seed);
+    await refreshProfilesAndToast(`Imported as "${name}"`);
   } catch (err) {
     console.error('Import failed', err);
     alert('Import failed. Please try again.');
@@ -1997,29 +2024,36 @@ async function resetProfileHandler(profileId) {
   if (!p) return;
   if (!confirm(`Reset "${p.name}" to default? This clears its maxes, logs, and custom exercises. This cannot be undone.`)) return;
 
-  const uid = state.user.uid;
-  const defaults = defaultProfileData();
-  await window.Firebase.saveProfileData(uid, profileId, defaults);
+  try {
+    const uid = state.user.uid;
+    const defaults = defaultProfileData();
+    await window.Firebase.saveProfileData(uid, profileId, defaults);
 
-  if (profileId === state.profileId) {
-    state.maxes = defaults.maxes;
-    state.rounding = defaults.rounding;
-    state.customExercises = defaults.customExercises;
-    state.logs = defaults.logs;
-    state.plateSettings = defaults.plateSettings;
-    state.trackedLifts = defaults.trackedLifts;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(defaults));
+    if (profileId === state.profileId) {
+      state.maxes = defaults.maxes;
+      state.rounding = defaults.rounding;
+      state.customExercises = defaults.customExercises;
+      state.logs = defaults.logs;
+      state.plateSettings = defaults.plateSettings;
+      state.trackedLifts = defaults.trackedLifts;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(defaults));
+    }
+    showToast('Profile reset to default');
+    render();
+  } catch (e) {
+    console.error('Failed to reset profile', e);
+    showToast('Could not reset profile. Please try again.');
   }
-  showToast('Profile reset to default');
-  render();
 }
 
 async function renameProfileHandler(profileId, name) {
-  const uid = state.user.uid;
-  await window.Firebase.renameProfile(uid, profileId, name);
-  state.profiles = await window.Firebase.listProfiles(uid);
-  showToast('Profile renamed');
-  render();
+  try {
+    await window.Firebase.renameProfile(state.user.uid, profileId, name);
+    await refreshProfilesAndToast('Profile renamed');
+  } catch (e) {
+    console.error('Failed to rename profile', e);
+    showToast('Could not rename profile. Please try again.');
+  }
 }
 
 async function deleteProfileHandler(profileId) {
@@ -2029,15 +2063,20 @@ async function deleteProfileHandler(profileId) {
   }
   const p = state.profiles.find((x) => x.id === profileId);
   if (!confirm(`Delete "${p ? p.name : 'this profile'}"? This cannot be undone.`)) return;
-  const uid = state.user.uid;
-  await window.Firebase.deleteProfile(uid, profileId);
-  state.profiles = await window.Firebase.listProfiles(uid);
-  if (state.profileId === profileId) {
-    await switchProfile(state.profiles[0].id);
-  } else {
-    render();
+  try {
+    const uid = state.user.uid;
+    await window.Firebase.deleteProfile(uid, profileId);
+    state.profiles = await window.Firebase.listProfiles(uid);
+    if (state.profileId === profileId) {
+      await switchProfile(state.profiles[0].id);
+    } else {
+      render();
+    }
+    showToast('Profile deleted');
+  } catch (e) {
+    console.error('Failed to delete profile', e);
+    showToast('Could not delete profile. Please try again.');
   }
-  showToast('Profile deleted');
 }
 
 // ========== LOGGING ==========
@@ -2108,39 +2147,34 @@ function trackedLiftFormGroupHtml(selectedId) {
         <option value="__new__">+ New tracked lift...</option>
       </select>
     </div>
-    <div class="form-group" id="edit-tracked-new-group" style="display:none">
+    <div class="form-group hidden" id="edit-tracked-new-group">
       <label>New tracked lift name</label>
       <input type="text" id="edit-tracked-new-name" placeholder="e.g. Front Squat" />
     </div>
   `;
 }
 
-function openEditModal(week, dayIdx, exIdx) {
-  const exercises = getExercises(week, dayIdx);
-  const ex = exercises[exIdx];
-  if (!ex) return;
-
-  state.editing = { week, dayIdx, exIdx, mode: 'edit' };
-
-  document.getElementById('modal-title').textContent = 'Edit Exercise';
-  document.getElementById('modal-body').innerHTML = `
+// Shared by openEditModal/openAddModal - `ex` supplies field values (an existing
+// exercise for Edit, a plain object of defaults for Add).
+function exerciseFormFieldsHtml(ex) {
+  return `
     <div class="form-group">
       <label>Name</label>
-      <input type="text" id="edit-name" value="${ex.name || ''}" />
+      <input type="text" id="edit-name" placeholder="e.g. Face Pulls" value="${ex.name || ''}" />
     </div>
     <div class="form-row">
       <div class="form-group">
         <label>Sets</label>
-        <input type="text" id="edit-sets" value="${ex.sets || ''}" />
+        <input type="text" id="edit-sets" placeholder="3" value="${ex.sets || ''}" />
       </div>
       <div class="form-group">
         <label>Reps</label>
-        <input type="text" id="edit-reps" value="${ex.reps || ''}" />
+        <input type="text" id="edit-reps" placeholder="10-12" value="${ex.reps || ''}" />
       </div>
     </div>
     <div class="form-group">
       <label>Intensity (e.g. 75%, RPE 7, or leave blank)</label>
-      <input type="text" id="edit-intensity" value="${ex.intensity || ''}" />
+      <input type="text" id="edit-intensity" placeholder="RPE 7" value="${ex.intensity || ''}" />
     </div>
     <div class="form-group">
       <label>Note (equipment, etc.)</label>
@@ -2160,29 +2194,46 @@ function openEditModal(week, dayIdx, exIdx) {
       <label>Type</label>
       <select id="edit-type">
         <option value="percentage" ${ex.type === 'percentage' ? 'selected' : ''}>Percentage of 1RM</option>
-        <option value="rpe" ${ex.type === 'rpe' ? 'selected' : ''}>RPE (choose weight by feel)</option>
+        <option value="rpe" ${ex.type === 'rpe' || !ex.type ? 'selected' : ''}>RPE (choose weight by feel)</option>
         <option value="other" ${ex.type === 'other' ? 'selected' : ''}>Other</option>
       </select>
     </div>
-    <div class="form-group" id="edit-percent-group" style="${ex.type === 'percentage' ? '' : 'display:none'}">
+    <div class="form-group ${ex.type === 'percentage' ? '' : 'hidden'}" id="edit-percent-group">
       <label>Percent (0–1, e.g. 0.75 for 75%)</label>
       <input type="text" inputmode="decimal" id="edit-percent" value="${ex.percent != null ? ex.percent : ''}" />
     </div>
+  `;
+}
+
+// Shared by openEditModal/openAddModal - wires the cross-field show/hide behavior once
+// the form HTML above is in the DOM.
+function wireExerciseFormFieldListeners() {
+  document.getElementById('edit-type').addEventListener('change', (e) => {
+    document.getElementById('edit-percent-group').classList.toggle('hidden', e.target.value !== 'percentage');
+  });
+  document.getElementById('edit-tracked').addEventListener('change', (e) => {
+    document.getElementById('edit-tracked-new-group').classList.toggle('hidden', e.target.value !== '__new__');
+  });
+  document.getElementById('edit-lift').addEventListener('change', (e) => {
+    document.getElementById('edit-tracked-group').classList.toggle('hidden', !!e.target.value);
+    if (e.target.value) document.getElementById('edit-tracked-new-group').classList.add('hidden');
+  });
+}
+
+function openEditModal(week, dayIdx, exIdx) {
+  const exercises = getExercises(week, dayIdx);
+  const ex = exercises[exIdx];
+  if (!ex) return;
+
+  state.editing = { week, dayIdx, exIdx, mode: 'edit' };
+
+  document.getElementById('modal-title').textContent = 'Edit Exercise';
+  document.getElementById('modal-body').innerHTML = exerciseFormFieldsHtml(ex) + `
     <button class="btn btn-danger btn-block mt-4" onclick="deleteExercise()">Delete Exercise</button>
   `;
 
-  // Toggle percent field
-  document.getElementById('edit-type').addEventListener('change', (e) => {
-    document.getElementById('edit-percent-group').style.display = e.target.value === 'percentage' ? '' : 'none';
-  });
-  document.getElementById('edit-tracked').addEventListener('change', (e) => {
-    document.getElementById('edit-tracked-new-group').style.display = e.target.value === '__new__' ? '' : 'none';
-  });
-  document.getElementById('edit-lift').addEventListener('change', (e) => {
-    document.getElementById('edit-tracked-group').style.display = e.target.value ? 'none' : '';
-    if (e.target.value) document.getElementById('edit-tracked-new-group').style.display = 'none';
-  });
-  if (ex.lift) document.getElementById('edit-tracked-group').style.display = 'none';
+  wireExerciseFormFieldListeners();
+  if (ex.lift) document.getElementById('edit-tracked-group').classList.add('hidden');
 
   openModalOverlay();
 }
@@ -2191,63 +2242,9 @@ function openAddModal(week, dayIdx) {
   state.editing = { week, dayIdx, mode: 'add' };
 
   document.getElementById('modal-title').textContent = 'Add Exercise';
-  document.getElementById('modal-body').innerHTML = `
-    <div class="form-group">
-      <label>Name</label>
-      <input type="text" id="edit-name" placeholder="e.g. Face Pulls" />
-    </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label>Sets</label>
-        <input type="text" id="edit-sets" placeholder="3" value="3" />
-      </div>
-      <div class="form-group">
-        <label>Reps</label>
-        <input type="text" id="edit-reps" placeholder="10-12" value="10-12" />
-      </div>
-    </div>
-    <div class="form-group">
-      <label>Intensity (e.g. RPE 7)</label>
-      <input type="text" id="edit-intensity" placeholder="RPE 7" value="RPE 7" />
-    </div>
-    <div class="form-group">
-      <label>Note (equipment, etc.)</label>
-      <input type="text" id="edit-note" placeholder="e.g. trap bar, close grip" />
-    </div>
-    <div class="form-group">
-      <label>Lift for load calc (optional)</label>
-      <select id="edit-lift">
-        <option value="" selected>None (accessory)</option>
-        <option value="squat">Squat</option>
-        <option value="bench">Bench</option>
-        <option value="deadlift">Deadlift</option>
-      </select>
-    </div>
-    ${trackedLiftFormGroupHtml(null)}
-    <div class="form-group">
-      <label>Type</label>
-      <select id="edit-type">
-        <option value="rpe" selected>RPE (choose weight by feel)</option>
-        <option value="percentage">Percentage of 1RM</option>
-        <option value="other">Other</option>
-      </select>
-    </div>
-    <div class="form-group" id="edit-percent-group" style="display:none">
-      <label>Percent (0–1)</label>
-      <input type="text" inputmode="decimal" id="edit-percent" />
-    </div>
-  `;
+  document.getElementById('modal-body').innerHTML = exerciseFormFieldsHtml({ sets: '3', reps: '10-12', intensity: 'RPE 7', type: 'rpe' });
 
-  document.getElementById('edit-type').addEventListener('change', (e) => {
-    document.getElementById('edit-percent-group').style.display = e.target.value === 'percentage' ? '' : 'none';
-  });
-  document.getElementById('edit-tracked').addEventListener('change', (e) => {
-    document.getElementById('edit-tracked-new-group').style.display = e.target.value === '__new__' ? '' : 'none';
-  });
-  document.getElementById('edit-lift').addEventListener('change', (e) => {
-    document.getElementById('edit-tracked-group').style.display = e.target.value ? 'none' : '';
-    if (e.target.value) document.getElementById('edit-tracked-new-group').style.display = 'none';
-  });
+  wireExerciseFormFieldListeners();
 
   openModalOverlay();
 }
@@ -2271,40 +2268,48 @@ function closeModal() {
   consumeHistoryEntry();
 }
 
+// saveModal() dispatches to one of three unrelated domains, based on what kind of
+// modal is currently open - each is otherwise independent, sharing no logic beyond
+// reading state.editing.mode and calling closeModal().
 function saveModal() {
   if (!state.editing) return;
+  const mode = state.editing.mode;
 
-  if (state.editing.mode === 'plate-count') {
-    const denom = state.editing.denom;
-    const returnToSettings = state.editing.returnToSettings;
-    const unlimited = document.getElementById('plate-unlimited-input').checked;
-    const countVal = Math.max(0, parseInt(document.getElementById('plate-count-input').value, 10) || 0);
-    getActivePlates()[denom] = { count: countVal, unlimited };
-    saveState();
-    closeModal();
-    if (returnToSettings) openPlateSettingsModal();
-    if (state.view === 'plates') refreshPlateCalcDisplay();
-    if (state.view !== 'plates' && !returnToSettings) render();
+  if (mode === 'plate-count') return saveModalPlateCount();
+  if (mode === 'new-profile' || mode === 'rename-profile' || mode === 'duplicate-profile') return saveModalProfileName();
+  saveModalExercise();
+}
+
+function saveModalPlateCount() {
+  const denom = state.editing.denom;
+  const returnToSettings = state.editing.returnToSettings;
+  const unlimited = document.getElementById('plate-unlimited-input').checked;
+  const countVal = Math.max(0, parseInt(document.getElementById('plate-count-input').value, 10) || 0);
+  getActivePlates()[denom] = { count: countVal, unlimited };
+  saveState();
+  closeModal();
+  if (returnToSettings) openPlateSettingsModal();
+  if (state.view === 'plates') refreshPlateCalcDisplay();
+  if (state.view !== 'plates' && !returnToSettings) render();
+}
+
+function saveModalProfileName() {
+  const profileName = document.getElementById('profile-name').value.trim();
+  if (!profileName) {
+    showToast('Name is required');
     return;
   }
-
-  if (state.editing.mode === 'new-profile' || state.editing.mode === 'rename-profile' || state.editing.mode === 'duplicate-profile') {
-    const profileName = document.getElementById('profile-name').value.trim();
-    if (!profileName) {
-      showToast('Name is required');
-      return;
-    }
-    if (state.editing.mode === 'new-profile') {
-      createProfileHandler(profileName);
-    } else if (state.editing.mode === 'rename-profile') {
-      renameProfileHandler(state.editing.profileId, profileName);
-    } else {
-      duplicateProfileHandler(profileName);
-    }
-    closeModal();
-    return;
+  if (state.editing.mode === 'new-profile') {
+    createProfileHandler(profileName);
+  } else if (state.editing.mode === 'rename-profile') {
+    renameProfileHandler(state.editing.profileId, profileName);
+  } else {
+    duplicateProfileHandler(profileName);
   }
+  closeModal();
+}
 
+function saveModalExercise() {
   const { week, dayIdx, exIdx, mode } = state.editing;
 
   const name = document.getElementById('edit-name').value.trim();
@@ -2438,7 +2443,6 @@ function resetWarmupsForDay(week, dayIdx) {
 
 // ========== PLATE CALCULATOR SETTINGS ==========
 function openPlateSettingsModal() {
-  state.editing = { mode: 'plate-settings' };
   const unit = getPlateUnit();
   const barbellOptions = unit === 'kg' ? BARBELL_OPTIONS_KG : BARBELL_OPTIONS_LB;
   const currentBarbell = getBarbellWeight();
@@ -2446,7 +2450,7 @@ function openPlateSettingsModal() {
   const plates = getActivePlates();
   const visuals = getPlateVisual();
 
-  document.getElementById('modal-title').textContent = 'Barbell & Plates';
+  beginInfoModal({ mode: 'plate-settings' }, 'Barbell & Plates');
   document.getElementById('modal-body').innerHTML = `
     <div class="form-group">
       <label>Barbell (${unit})</label>
@@ -2478,7 +2482,6 @@ function openPlateSettingsModal() {
       </div>
     </div>
   `;
-  document.getElementById('modal-save').classList.add('hidden');
   openModalOverlay();
 }
 
