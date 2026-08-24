@@ -1698,7 +1698,7 @@ function defaultProfileData() {
 }
 
 function resetAllData() {
-  if (confirm('Reset all maxes, logs, and custom exercises? This cannot be undone.')) {
+  if (confirm('Reset all maxes, logs, custom exercises, and tracked lifts? This cannot be undone.')) {
     localStorage.removeItem(STORAGE_KEY);
     const defaults = defaultProfileData();
     state.maxes = defaults.maxes;
