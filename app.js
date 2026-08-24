@@ -936,7 +936,10 @@ function renderWeek() {
       <h2>Week ${state.currentWeek}</h2>
       <p>${w.title}</p>
     </div>
-    <button class="link-btn" style="margin-bottom:12px;" onclick="goTable(${state.currentWeek})">View as Table</button>
+    <button class="btn btn-secondary mb-2" onclick="goTable(${state.currentWeek})">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+      View as Table
+    </button>
     <div class="week-list">
   `;
 
