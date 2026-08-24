@@ -1267,7 +1267,9 @@ function renderProfiles() {
           ${state.openProfileMenuId === p.id ? `
             <div class="profile-menu">
               <button onclick="event.stopPropagation();closeProfileMenu();exportProfileHandler('${p.id}')">Export</button>
-              <button onclick="event.stopPropagation();closeProfileMenu();resetProfileHandler('${p.id}')">Reset to Default</button>
+              <button onclick="event.stopPropagation();closeProfileMenu();openSaveBlueprintModal('${p.id}')">Save as Blueprint</button>
+              <button onclick="event.stopPropagation();closeProfileMenu();resetProfileHandler('${p.id}')">Reset to Original Default</button>
+              <button onclick="event.stopPropagation();closeProfileMenu();openResetToBlueprintModal('${p.id}')">Reset to Blueprint</button>
               <button class="profile-menu-danger" onclick="event.stopPropagation();closeProfileMenu();deleteProfileHandler('${p.id}')">Delete</button>
             </div>
           ` : ''}
@@ -1279,6 +1281,7 @@ function renderProfiles() {
   html += `
     <button class="btn btn-primary btn-block mt-4" onclick="openNewProfileModal()">+ New Profile</button>
     <button class="btn btn-secondary btn-block mt-2" onclick="openDuplicateProfileModal()">Duplicate Current Profile</button>
+    <button class="btn btn-secondary btn-block mt-2" onclick="openManageBlueprintsModal()">Manage Blueprints</button>
     <button class="btn btn-secondary btn-block mt-2" onclick="importProfileHandler()">Import Profile from File</button>
     <button class="btn btn-secondary btn-block mt-2" onclick="signOutHandler()">Sign Out</button>
   `;
@@ -1753,9 +1756,10 @@ async function switchProfile(profileId) {
   }
 }
 
-function openProfileNameModal(mode, title, prefill, profileId) {
-  state.editing = profileId != null ? { mode, profileId } : { mode };
+function openProfileNameModal(mode, title, prefill, id) {
+  state.editing = id != null ? { mode, id } : { mode };
   document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-save').classList.remove('hidden');
   document.getElementById('modal-body').innerHTML = `
     <div class="form-group">
       <label>Name</label>
@@ -1765,8 +1769,30 @@ function openProfileNameModal(mode, title, prefill, profileId) {
   openModalOverlay();
 }
 
-function openNewProfileModal() {
-  openProfileNameModal('new-profile', 'New Profile', '');
+async function openNewProfileModal() {
+  let blueprints = [];
+  try {
+    blueprints = await window.Firebase.listBlueprints(state.user.uid);
+  } catch (e) {
+    console.error('Failed to load blueprints', e);
+  }
+  state.editing = { mode: 'new-profile' };
+  document.getElementById('modal-title').textContent = 'New Profile';
+  document.getElementById('modal-save').classList.remove('hidden');
+  document.getElementById('modal-body').innerHTML = `
+    <div class="form-group">
+      <label>Name</label>
+      <input type="text" id="profile-name" placeholder="e.g. Block B - higher reps" />
+    </div>
+    <div class="form-group">
+      <label>Start from</label>
+      <select id="new-profile-blueprint">
+        <option value="__default__">Original TSA-Default</option>
+        ${blueprints.map((b) => `<option value="${b.id}">${b.name}</option>`).join('')}
+      </select>
+    </div>
+  `;
+  openModalOverlay();
 }
 
 function openRenameProfileModal(profileId) {
@@ -1876,9 +1902,23 @@ async function refreshProfilesAndToast(message) {
   render();
 }
 
-async function createProfileHandler(name) {
+async function createProfileHandler(name, blueprintId) {
   try {
-    await window.Firebase.createProfile(state.user.uid, name, {});
+    const uid = state.user.uid;
+    let seed = {};
+    if (blueprintId && blueprintId !== '__default__') {
+      const bp = await window.Firebase.loadBlueprintData(uid, blueprintId);
+      if (bp) {
+        seed = {
+          maxes: bp.maxes,
+          rounding: bp.rounding,
+          customExercises: bp.customExercises,
+          plateSettings: bp.plateSettings,
+          trackedLifts: bp.trackedLifts
+        };
+      }
+    }
+    await window.Firebase.createProfile(uid, name, seed);
     await refreshProfilesAndToast('Profile created');
   } catch (e) {
     console.error('Failed to create profile', e);
@@ -2046,6 +2086,174 @@ async function resetProfileHandler(profileId) {
   } catch (e) {
     console.error('Failed to reset profile', e);
     showToast('Could not reset profile. Please try again.');
+  }
+}
+
+function openSaveBlueprintModal(profileId) {
+  openProfileNameModal('save-blueprint', 'Save as Blueprint', '', profileId);
+}
+
+async function saveBlueprintHandler(profileId, name) {
+  try {
+    const uid = state.user.uid;
+    let source;
+    if (profileId === state.profileId) {
+      source = {
+        maxes: state.maxes,
+        rounding: state.rounding,
+        customExercises: state.customExercises,
+        plateSettings: state.plateSettings,
+        trackedLifts: state.trackedLifts
+      };
+    } else {
+      const remote = await window.Firebase.loadProfileData(uid, profileId);
+      if (!remote) {
+        showToast('Could not load that profile');
+        return;
+      }
+      source = {
+        maxes: remote.maxes,
+        rounding: remote.rounding,
+        customExercises: remote.customExercises,
+        plateSettings: remote.plateSettings,
+        trackedLifts: remote.trackedLifts
+      };
+    }
+    await window.Firebase.createBlueprint(uid, name, source);
+    showToast(`Saved blueprint "${name}"`);
+    render();
+  } catch (e) {
+    console.error('Failed to save blueprint', e);
+    showToast('Could not save blueprint. Please try again.');
+  }
+}
+
+async function openResetToBlueprintModal(profileId) {
+  const p = state.profiles.find((x) => x.id === profileId);
+  if (!p) return;
+  try {
+    const blueprints = await window.Firebase.listBlueprints(state.user.uid);
+    beginInfoModal({ mode: 'reset-to-blueprint', profileId, blueprints }, `Reset "${p.name}" to Blueprint`);
+    document.getElementById('modal-body').innerHTML = `
+      <p class="note" style="margin-bottom:12px;">Choose a blueprint to reset this profile to. This clears its current maxes, logs, and custom exercises. This cannot be undone.</p>
+      <div class="plate-list">
+        ${blueprints.length === 0 ? '<p class="note">No blueprints yet — save one via "Save as Blueprint" first.</p>' : blueprints.map((b) => `
+          <div class="plate-list-row" onclick="pickResetBlueprint('${b.id}')">
+            <span>${b.name}</span>
+          </div>
+        `).join('')}
+      </div>
+    `;
+    openModalOverlay();
+  } catch (e) {
+    console.error('Failed to load blueprints', e);
+    showToast('Could not load blueprints. Please try again.');
+  }
+}
+
+function pickResetBlueprint(blueprintId) {
+  const { profileId, blueprints } = state.editing;
+  const bp = blueprints.find((b) => b.id === blueprintId);
+  closeModal();
+  resetToBlueprintHandler(profileId, blueprintId, bp ? bp.name : 'blueprint');
+}
+
+async function resetToBlueprintHandler(profileId, blueprintId, blueprintName) {
+  const p = state.profiles.find((x) => x.id === profileId);
+  if (!confirm(`Reset "${p ? p.name : 'this profile'}" to blueprint "${blueprintName}"? This clears its current maxes, logs, and custom exercises. This cannot be undone.`)) return;
+
+  try {
+    const uid = state.user.uid;
+    const bp = await window.Firebase.loadBlueprintData(uid, blueprintId);
+    if (!bp) {
+      showToast('Could not load that blueprint');
+      return;
+    }
+    const seed = {
+      maxes: bp.maxes,
+      rounding: bp.rounding,
+      customExercises: bp.customExercises,
+      plateSettings: bp.plateSettings,
+      trackedLifts: bp.trackedLifts,
+      logs: {}
+    };
+    await window.Firebase.saveProfileData(uid, profileId, seed);
+
+    if (profileId === state.profileId) {
+      state.maxes = seed.maxes;
+      state.rounding = seed.rounding;
+      state.customExercises = seed.customExercises;
+      state.logs = seed.logs;
+      state.plateSettings = seed.plateSettings;
+      state.trackedLifts = seed.trackedLifts;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(seed));
+    }
+    showToast(`Reset to blueprint "${blueprintName}"`);
+    render();
+  } catch (e) {
+    console.error('Failed to reset to blueprint', e);
+    showToast('Could not reset profile. Please try again.');
+  }
+}
+
+async function openManageBlueprintsModal() {
+  try {
+    const blueprints = await window.Firebase.listBlueprints(state.user.uid);
+    beginInfoModal({ mode: 'manage-blueprints', blueprints }, 'Manage Blueprints');
+    renderManageBlueprintsModalBody();
+    openModalOverlay();
+  } catch (e) {
+    console.error('Failed to load blueprints', e);
+    showToast('Could not load blueprints. Please try again.');
+  }
+}
+
+function renderManageBlueprintsModalBody() {
+  const { blueprints } = state.editing;
+  document.getElementById('modal-body').innerHTML = `
+    <div class="plate-list">
+      ${blueprints.length === 0 ? '<p class="note">No blueprints yet — save one from a profile\'s ⋮ menu first.</p>' : blueprints.map((b) => `
+        <div class="plate-list-row">
+          <span>${b.name}</span>
+          <button class="btn-icon" style="width:28px;height:28px;flex:none;" onclick="openRenameBlueprintModal('${b.id}')" title="Rename">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+          <button class="btn-icon" style="width:28px;height:28px;flex:none;" onclick="deleteBlueprintHandler('${b.id}')" title="Delete">&times;</button>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function openRenameBlueprintModal(blueprintId) {
+  const { blueprints } = state.editing;
+  const b = blueprints.find((x) => x.id === blueprintId);
+  if (!b) return;
+  openProfileNameModal('rename-blueprint', 'Rename Blueprint', b.name, blueprintId);
+}
+
+async function renameBlueprintHandler(blueprintId, name) {
+  try {
+    await window.Firebase.renameBlueprint(state.user.uid, blueprintId, name);
+    showToast('Blueprint renamed');
+    openManageBlueprintsModal();
+  } catch (e) {
+    console.error('Failed to rename blueprint', e);
+    showToast('Could not rename blueprint. Please try again.');
+  }
+}
+
+async function deleteBlueprintHandler(blueprintId) {
+  const { blueprints } = state.editing;
+  const b = blueprints.find((x) => x.id === blueprintId);
+  if (!confirm(`Delete blueprint "${b ? b.name : 'this blueprint'}"? This cannot be undone. Profiles already created from it are not affected.`)) return;
+  try {
+    await window.Firebase.deleteBlueprint(state.user.uid, blueprintId);
+    showToast('Blueprint deleted');
+    openManageBlueprintsModal();
+  } catch (e) {
+    console.error('Failed to delete blueprint', e);
+    showToast('Could not delete blueprint. Please try again.');
   }
 }
 
@@ -2279,7 +2487,8 @@ function saveModal() {
   const mode = state.editing.mode;
 
   if (mode === 'plate-count') return saveModalPlateCount();
-  if (mode === 'new-profile' || mode === 'rename-profile' || mode === 'duplicate-profile') return saveModalProfileName();
+  if (mode === 'new-profile' || mode === 'rename-profile' || mode === 'duplicate-profile' ||
+      mode === 'save-blueprint' || mode === 'rename-blueprint') return saveModalProfileName();
   saveModalExercise();
 }
 
@@ -2302,12 +2511,18 @@ function saveModalProfileName() {
     showToast('Name is required');
     return;
   }
-  if (state.editing.mode === 'new-profile') {
-    createProfileHandler(profileName);
-  } else if (state.editing.mode === 'rename-profile') {
-    renameProfileHandler(state.editing.profileId, profileName);
-  } else {
+  const mode = state.editing.mode;
+  if (mode === 'new-profile') {
+    const blueprintId = document.getElementById('new-profile-blueprint').value;
+    createProfileHandler(profileName, blueprintId);
+  } else if (mode === 'rename-profile') {
+    renameProfileHandler(state.editing.id, profileName);
+  } else if (mode === 'duplicate-profile') {
     duplicateProfileHandler(profileName);
+  } else if (mode === 'save-blueprint') {
+    saveBlueprintHandler(state.editing.id, profileName);
+  } else if (mode === 'rename-blueprint') {
+    renameBlueprintHandler(state.editing.id, profileName);
   }
   closeModal();
 }
