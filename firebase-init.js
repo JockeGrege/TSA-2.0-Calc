@@ -179,7 +179,9 @@ async function createBlueprint(uid, name, data) {
     rounding: data.rounding,
     customExercises: data.customExercises,
     plateSettings: data.plateSettings,
-    trackedLifts: data.trackedLifts
+    trackedLifts: data.trackedLifts,
+    trackSbd: data.trackSbd !== false,
+    weekTitles: data.weekTitles || {}
   });
   return ref.id;
 }

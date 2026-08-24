@@ -1885,7 +1885,7 @@ function openNewCustomProfileModal() {
       <p class="note" style="margin-top:6px;">Keeps the original TSA program and tracks your Squat, Bench, and Deadlift 1RMs. Uncheck to start a fully empty program instead — no preset exercises, and you'll name your own weeks below.</p>
     </div>
     <div id="custom-profile-weeks-group" class="hidden">
-      <p class="note" style="margin-bottom:8px;">Name your weeks (optional — leave blank to keep "Week 1", "Week 2", etc.)</p>
+      <p class="note" style="margin-bottom:8px;">Name your weeks (optional — leave blank to keep TSA week naming)</p>
       ${Array.from({ length: 9 }, (_, i) => `
         <div class="form-group">
           <input type="text" id="custom-week-name-${i + 1}" placeholder="Week ${i + 1}" />
@@ -2020,7 +2020,9 @@ async function createProfileHandler(name, blueprintId) {
           rounding: bp.rounding,
           customExercises: bp.customExercises,
           plateSettings: bp.plateSettings,
-          trackedLifts: bp.trackedLifts
+          trackedLifts: bp.trackedLifts,
+          trackSbd: bp.trackSbd !== false,
+          weekTitles: bp.weekTitles || {}
         };
       }
     }
@@ -2238,7 +2240,9 @@ async function saveBlueprintHandler(profileId, name) {
         rounding: state.rounding,
         customExercises: state.customExercises,
         plateSettings: state.plateSettings,
-        trackedLifts: state.trackedLifts
+        trackedLifts: state.trackedLifts,
+        trackSbd: state.trackSbd,
+        weekTitles: state.weekTitles
       };
     } else {
       const remote = await window.Firebase.loadProfileData(uid, profileId);
@@ -2251,7 +2255,9 @@ async function saveBlueprintHandler(profileId, name) {
         rounding: remote.rounding,
         customExercises: remote.customExercises,
         plateSettings: remote.plateSettings,
-        trackedLifts: remote.trackedLifts
+        trackedLifts: remote.trackedLifts,
+        trackSbd: remote.trackSbd,
+        weekTitles: remote.weekTitles
       };
     }
     await window.Firebase.createBlueprint(uid, name, source);
@@ -2310,6 +2316,8 @@ async function resetToBlueprintHandler(profileId, blueprintId, blueprintName) {
       customExercises: bp.customExercises,
       plateSettings: bp.plateSettings,
       trackedLifts: bp.trackedLifts,
+      trackSbd: bp.trackSbd !== false,
+      weekTitles: bp.weekTitles || {},
       logs: {}
     };
     await window.Firebase.saveProfileData(uid, profileId, seed);
@@ -2321,6 +2329,8 @@ async function resetToBlueprintHandler(profileId, blueprintId, blueprintName) {
       state.logs = seed.logs;
       state.plateSettings = seed.plateSettings;
       state.trackedLifts = seed.trackedLifts;
+      state.trackSbd = seed.trackSbd;
+      state.weekTitles = seed.weekTitles;
       localStorage.setItem(STORAGE_KEY, JSON.stringify(seed));
     }
     showToast(`Reset to blueprint "${blueprintName}"`);
