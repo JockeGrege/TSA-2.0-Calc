@@ -37,6 +37,8 @@ const DEFAULT_PROFILE_DATA = {
   customExercises: {},
   logs: {},
   trackedLifts: {},
+  trackSbd: true,
+  weekTitles: {},
   viewerEmails: [],
   plateSettings: {
     barbellKg: 20,

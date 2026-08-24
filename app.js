@@ -797,33 +797,36 @@ function render() {
 }
 
 function renderHome() {
-  const hasMaxes = state.maxes.squat.e1rm || state.maxes.bench.e1rm || state.maxes.deadlift.e1rm;
+  const trackSbd = state.trackSbd !== false;
+  const hasMaxes = trackSbd && (state.maxes.squat.e1rm || state.maxes.bench.e1rm || state.maxes.deadlift.e1rm);
 
   let html = '';
-  if (hasMaxes) {
-    html += `
-      <div class="setup-summary">
-        <div class="setup-stat">
-          <div class="label">Squat</div>
-          <div class="value">${state.maxes.squat.e1rm || '—'}</div>
+  if (trackSbd) {
+    if (hasMaxes) {
+      html += `
+        <div class="setup-summary">
+          <div class="setup-stat">
+            <div class="label">Squat</div>
+            <div class="value">${state.maxes.squat.e1rm || '—'}</div>
+          </div>
+          <div class="setup-stat">
+            <div class="label">Bench</div>
+            <div class="value">${state.maxes.bench.e1rm || '—'}</div>
+          </div>
+          <div class="setup-stat">
+            <div class="label">Deadlift</div>
+            <div class="value">${state.maxes.deadlift.e1rm || '—'}</div>
+          </div>
         </div>
-        <div class="setup-stat">
-          <div class="label">Bench</div>
-          <div class="value">${state.maxes.bench.e1rm || '—'}</div>
+      `;
+    } else {
+      html += `
+        <div class="card">
+          <p style="color:var(--text-muted);margin-bottom:12px;">Enter your recent heavy singles or low-rep sets to calculate training loads.</p>
+          <button class="btn btn-primary btn-block" onclick="goSetup()">Set Up Maxes →</button>
         </div>
-        <div class="setup-stat">
-          <div class="label">Deadlift</div>
-          <div class="value">${state.maxes.deadlift.e1rm || '—'}</div>
-        </div>
-      </div>
-    `;
-  } else {
-    html += `
-      <div class="card">
-        <p style="color:var(--text-muted);margin-bottom:12px;">Enter your recent heavy singles or low-rep sets to calculate training loads.</p>
-        <button class="btn btn-primary btn-block" onclick="goSetup()">Set Up Maxes →</button>
-      </div>
-    `;
+      `;
+    }
   }
 
   html += `
@@ -842,7 +845,7 @@ function renderHome() {
 
   for (let i = 1; i <= 9; i++) {
     const w = PROGRAM[String(i)];
-    const title = w?.title || `Week ${i}`;
+    const title = state.weekTitles?.[i] || w?.title || `Week ${i}`;
     const short = title.replace(/^Week \d+\s*-\s*/, '');
     html += `
       <div class="week-item" onclick="goWeek(${i})">
@@ -868,11 +871,11 @@ function renderHome() {
 }
 
 function renderSetup() {
-  const lifts = [
+  const lifts = state.trackSbd !== false ? [
     { key: 'squat', label: 'Squat' },
     { key: 'bench', label: 'Bench Press' },
     { key: 'deadlift', label: 'Deadlift' }
-  ];
+  ] : [];
 
   let html = `
     <div class="card">
@@ -934,7 +937,7 @@ function renderWeek() {
   let html = `
     <div class="day-header">
       <h2>Week ${state.currentWeek}</h2>
-      <p>${w.title}</p>
+      <p>${state.weekTitles?.[state.currentWeek] || w.title}</p>
     </div>
     <button class="btn btn-secondary mb-2" onclick="goTable(${state.currentWeek})">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
@@ -1019,7 +1022,7 @@ function renderTableView() {
     const w = PROGRAM[String(week)];
     if (!w) return;
     html += `<div class="program-week-block">`;
-    html += `<div class="program-week-banner">${w.title}</div>`;
+    html += `<div class="program-week-banner">${state.weekTitles?.[week] || w.title}</div>`;
     w.days.forEach((day, dayIdx) => {
       html += renderTableViewDayTable(week, dayIdx, day);
     });
@@ -1280,6 +1283,9 @@ function renderProfiles() {
   html += `</div>`;
   html += `
     <button class="btn btn-primary btn-block mt-4" onclick="openNewProfileModal()">+ New Profile</button>
+    <p class="note" style="margin:4px 0 12px;">Creates the original TSA program with Squat/Bench/Deadlift tracking.</p>
+    <button class="btn btn-secondary btn-block" onclick="openNewCustomProfileModal()">+ New Custom Profile</button>
+    <p class="note" style="margin:4px 0 12px;">Choose your own setup — with or without Squat/Bench/Deadlift tracking, and your own week names.</p>
     <button class="btn btn-secondary btn-block mt-2" onclick="openDuplicateProfileModal()">Duplicate Current Profile</button>
     <button class="btn btn-secondary btn-block mt-2" onclick="openManageBlueprintsModal()">Manage Blueprints</button>
     <button class="btn btn-secondary btn-block mt-2" onclick="importProfileHandler()">Import Profile from File</button>
@@ -1622,7 +1628,9 @@ function defaultProfileData() {
     customExercises: {},
     logs: {},
     plateSettings: defaultPlateSettings(),
-    trackedLifts: {}
+    trackedLifts: {},
+    trackSbd: true,
+    weekTitles: {}
   };
 }
 
@@ -1731,6 +1739,8 @@ function subscribeToProfile(profileId) {
     if (data.logs) state.logs = data.logs;
     if (data.plateSettings) state.plateSettings = data.plateSettings;
     state.trackedLifts = data.trackedLifts || {};
+    state.trackSbd = data.trackSbd !== false;
+    state.weekTitles = data.weekTitles || {};
     if (!isEditingInput) render();
   });
   return firstSnapshot;
@@ -1793,6 +1803,39 @@ async function openNewProfileModal() {
     </div>
   `;
   openModalOverlay();
+}
+
+function openNewCustomProfileModal() {
+  state.editing = { mode: 'new-custom-profile' };
+  document.getElementById('modal-title').textContent = 'New Custom Profile';
+  document.getElementById('modal-save').classList.remove('hidden');
+  document.getElementById('modal-body').innerHTML = `
+    <div class="form-group">
+      <label>Name</label>
+      <input type="text" id="profile-name" placeholder="e.g. Push/Pull/Legs" />
+    </div>
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;">
+        <input type="checkbox" id="custom-profile-sbd" style="width:auto;" checked onchange="toggleCustomProfileWeeksGroup()" />
+        Include Squat/Bench/Deadlift tracking
+      </label>
+      <p class="note" style="margin-top:6px;">Keeps the original TSA program and tracks your Squat, Bench, and Deadlift 1RMs. Uncheck to start a fully empty program instead — no preset exercises, and you'll name your own weeks below.</p>
+    </div>
+    <div id="custom-profile-weeks-group" class="hidden">
+      <p class="note" style="margin-bottom:8px;">Name your weeks (optional — leave blank to keep "Week 1", "Week 2", etc.)</p>
+      ${Array.from({ length: 9 }, (_, i) => `
+        <div class="form-group">
+          <input type="text" id="custom-week-name-${i + 1}" placeholder="Week ${i + 1}" />
+        </div>
+      `).join('')}
+    </div>
+  `;
+  openModalOverlay();
+}
+
+function toggleCustomProfileWeeksGroup() {
+  const checked = document.getElementById('custom-profile-sbd').checked;
+  document.getElementById('custom-profile-weeks-group').classList.toggle('hidden', checked);
 }
 
 function openRenameProfileModal(profileId) {
@@ -1926,13 +1969,36 @@ async function createProfileHandler(name, blueprintId) {
   }
 }
 
+async function createCustomProfileHandler(name, includeSbd, weekTitles) {
+  try {
+    const uid = state.user.uid;
+    let seed = {};
+    if (!includeSbd) {
+      const customExercises = {};
+      for (let w = 1; w <= 9; w++) {
+        const week = PROGRAM[String(w)];
+        if (!week) continue;
+        week.days.forEach((_, dayIdx) => { customExercises[`${w}-${dayIdx}`] = []; });
+      }
+      seed = { trackSbd: false, weekTitles, customExercises };
+    }
+    await window.Firebase.createProfile(uid, name, seed);
+    await refreshProfilesAndToast('Profile created');
+  } catch (e) {
+    console.error('Failed to create custom profile', e);
+    showToast('Could not create profile. Please try again.');
+  }
+}
+
 async function duplicateProfileHandler(name) {
   const seed = {
     maxes: state.maxes,
     rounding: state.rounding,
     customExercises: state.customExercises,
     logs: state.logs,
-    plateSettings: state.plateSettings
+    plateSettings: state.plateSettings,
+    trackSbd: state.trackSbd,
+    weekTitles: state.weekTitles
   };
   try {
     await window.Firebase.createProfile(state.user.uid, name, seed);
@@ -1955,7 +2021,9 @@ async function exportProfileHandler(profileId) {
       customExercises: state.customExercises,
       logs: state.logs,
       plateSettings: state.plateSettings,
-      trackedLifts: state.trackedLifts
+      trackedLifts: state.trackedLifts,
+      trackSbd: state.trackSbd,
+      weekTitles: state.weekTitles
     };
   } else {
     const remote = await window.Firebase.loadProfileData(state.user.uid, profileId);
@@ -1969,7 +2037,9 @@ async function exportProfileHandler(profileId) {
       customExercises: remote.customExercises,
       logs: remote.logs,
       plateSettings: remote.plateSettings,
-      trackedLifts: remote.trackedLifts
+      trackedLifts: remote.trackedLifts,
+      trackSbd: remote.trackSbd,
+      weekTitles: remote.weekTitles
     };
   }
 
@@ -2040,7 +2110,9 @@ async function importParsedProfile(parsed) {
     customExercises: parsed.customExercises || {},
     logs: parsed.logs || {},
     plateSettings: parsed.plateSettings || defaults.plateSettings,
-    trackedLifts: parsed.trackedLifts || {}
+    trackedLifts: parsed.trackedLifts || {},
+    trackSbd: parsed.trackSbd !== false,
+    weekTitles: parsed.weekTitles || {}
   };
 
   let name = (typeof parsed.name === 'string' && parsed.name.trim())
@@ -2487,6 +2559,7 @@ function saveModal() {
   const mode = state.editing.mode;
 
   if (mode === 'plate-count') return saveModalPlateCount();
+  if (mode === 'new-custom-profile') return saveModalNewCustomProfile();
   if (mode === 'new-profile' || mode === 'rename-profile' || mode === 'duplicate-profile' ||
       mode === 'save-blueprint' || mode === 'rename-blueprint') return saveModalProfileName();
   saveModalExercise();
@@ -2524,6 +2597,24 @@ function saveModalProfileName() {
   } else if (mode === 'rename-blueprint') {
     renameBlueprintHandler(state.editing.id, profileName);
   }
+  closeModal();
+}
+
+function saveModalNewCustomProfile() {
+  const name = document.getElementById('profile-name').value.trim();
+  if (!name) {
+    showToast('Name is required');
+    return;
+  }
+  const includeSbd = document.getElementById('custom-profile-sbd').checked;
+  let weekTitles = {};
+  if (!includeSbd) {
+    for (let i = 1; i <= 9; i++) {
+      const val = document.getElementById(`custom-week-name-${i}`).value.trim();
+      if (val) weekTitles[i] = val;
+    }
+  }
+  createCustomProfileHandler(name, includeSbd, weekTitles);
   closeModal();
 }
 
@@ -2835,6 +2926,8 @@ function applySharedProfileData(data) {
   state.logs = data.logs || {};
   if (data.plateSettings) state.plateSettings = data.plateSettings;
   state.trackedLifts = data.trackedLifts || {};
+  state.trackSbd = data.trackSbd !== false;
+  state.weekTitles = data.weekTitles || {};
   render();
 }
 
