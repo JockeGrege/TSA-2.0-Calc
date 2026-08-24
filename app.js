@@ -887,7 +887,7 @@ function renderHome() {
     html += `
       <div class="card">
         <p style="color:var(--text-muted);margin-bottom:12px;">Mark up to 3 tracked lifts as "Main" to see their progress here.</p>
-        <button class="btn btn-secondary btn-block" onclick="openManageTrackedLiftsModal()">Manage Tracked Lifts</button>
+        ${!state.readOnly ? '<button class="btn btn-secondary btn-block" onclick="openManageTrackedLiftsModal()">Manage Tracked Lifts</button>' : ''}
       </div>
     `;
   }
@@ -1707,6 +1707,8 @@ function resetAllData() {
     state.logs = defaults.logs;
     state.plateSettings = defaults.plateSettings;
     state.trackedLifts = defaults.trackedLifts;
+    state.trackSbd = defaults.trackSbd;
+    state.weekTitles = defaults.weekTitles;
     if (state.user && state.profileId) {
       window.Firebase.saveProfileData(state.user.uid, state.profileId, defaults)
         .catch((e) => console.warn('Cloud reset failed', e));
@@ -2216,6 +2218,8 @@ async function resetProfileHandler(profileId) {
       state.logs = defaults.logs;
       state.plateSettings = defaults.plateSettings;
       state.trackedLifts = defaults.trackedLifts;
+      state.trackSbd = defaults.trackSbd;
+      state.weekTitles = defaults.weekTitles;
       localStorage.setItem(STORAGE_KEY, JSON.stringify(defaults));
     }
     showToast('Profile reset to default');
