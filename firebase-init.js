@@ -59,6 +59,14 @@ function profilesCollectionRef(uid) {
   return collection(db, "users", uid, "profiles");
 }
 
+function blueprintDocRef(uid, blueprintId) {
+  return doc(db, "users", uid, "blueprints", blueprintId);
+}
+
+function blueprintsCollectionRef(uid) {
+  return collection(db, "users", uid, "blueprints");
+}
+
 async function signUpEmail(email, password) {
   const cred = await createUserWithEmailAndPassword(auth, email, password);
   return cred.user;
@@ -152,6 +160,41 @@ async function saveProfileData(uid, profileId, data) {
   );
 }
 
+async function listBlueprints(uid) {
+  const snap = await getDocs(blueprintsCollectionRef(uid));
+  const blueprints = [];
+  snap.forEach((d) => blueprints.push({ id: d.id, name: d.data().name || "Untitled" }));
+  return blueprints;
+}
+
+async function createBlueprint(uid, name, data) {
+  const ref = doc(blueprintsCollectionRef(uid));
+  await setDoc(ref, {
+    name,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    maxes: data.maxes,
+    rounding: data.rounding,
+    customExercises: data.customExercises,
+    plateSettings: data.plateSettings,
+    trackedLifts: data.trackedLifts
+  });
+  return ref.id;
+}
+
+async function renameBlueprint(uid, blueprintId, name) {
+  await setDoc(blueprintDocRef(uid, blueprintId), { name, updatedAt: serverTimestamp() }, { merge: true });
+}
+
+async function deleteBlueprint(uid, blueprintId) {
+  await deleteDoc(blueprintDocRef(uid, blueprintId));
+}
+
+async function loadBlueprintData(uid, blueprintId) {
+  const snap = await getDoc(blueprintDocRef(uid, blueprintId));
+  return snap.exists() ? snap.data() : null;
+}
+
 async function setViewerEmails(uid, profileId, emails) {
   await setDoc(
     profileDocRef(uid, profileId),
@@ -212,6 +255,11 @@ window.Firebase = {
   deleteProfile,
   loadProfileData,
   saveProfileData,
+  listBlueprints,
+  createBlueprint,
+  renameBlueprint,
+  deleteBlueprint,
+  loadBlueprintData,
   setViewerEmails,
   watchCurrentProfile,
   importLegacyLocalStorageIfNeeded
