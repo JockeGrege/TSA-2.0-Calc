@@ -401,6 +401,13 @@ function computeLiftProgress(key) {
   return points;
 }
 
+function latestProgressValue(points) {
+  for (let i = points.length - 1; i >= 0; i--) {
+    if (points[i] != null) return points[i].value;
+  }
+  return null;
+}
+
 function buildChartSegments(points) {
   const segments = [];
   let current = [];
@@ -486,8 +493,10 @@ function openManageTrackedLiftsModal() {
 
 function renderManageTrackedLiftsModalBody() {
   const entries = Object.entries(state.trackedLifts || {}).sort((a, b) => a[1].label.localeCompare(b[1].label));
+  const noSbd = state.trackSbd === false;
   document.getElementById('modal-body').innerHTML = `
     <p class="note" style="margin-bottom:12px;">Deleting a tracked lift removes it from the Progress chart and un-tags it from every exercise that uses it. Logged sets themselves aren't deleted.</p>
+    ${noSbd ? '<p class="note" style="margin-bottom:12px;">Mark up to 3 as your main lifts — they\'ll get a summary card on Home and always show in Progress.</p>' : ''}
     <div class="plate-list">
       ${entries.length === 0 ? '<p class="note">No tracked lifts yet.</p>' : entries.map(([id, t]) => `
         <div class="plate-list-row">
@@ -495,11 +504,32 @@ function renderManageTrackedLiftsModalBody() {
             <span class="chart-legend-swatch" style="background:${t.color};"></span>
             ${t.label}
           </span>
+          ${noSbd ? `
+            <label style="display:flex;align-items:center;gap:4px;font-size:0.75rem;color:var(--text-muted);flex:none;">
+              <input type="checkbox" style="width:auto;" ${t.isMain ? 'checked' : ''} onchange="toggleTrackedLiftMain('${id}')" /> Main
+            </label>
+          ` : ''}
           <button class="btn-icon" style="width:28px;height:28px;flex:none;" onclick="deleteTrackedLift('${id}')" title="Delete">&times;</button>
         </div>
       `).join('')}
     </div>
   `;
+}
+
+function toggleTrackedLiftMain(id) {
+  const t = state.trackedLifts[id];
+  if (!t) return;
+  if (!t.isMain) {
+    const mainCount = Object.values(state.trackedLifts).filter((x) => x.isMain).length;
+    if (mainCount >= 3) {
+      showToast('You can mark up to 3 lifts as main lifts');
+      renderManageTrackedLiftsModalBody();
+      return;
+    }
+  }
+  t.isMain = !t.isMain;
+  saveState();
+  renderManageTrackedLiftsModalBody();
 }
 
 function deleteTrackedLift(id) {
@@ -522,15 +552,22 @@ function deleteTrackedLift(id) {
 function getProgressCandidates() {
   const mode = state.progressFilterMode || 'all';
   const hidden = state.progressHiddenLifts || {};
+  const trackSbd = state.trackSbd !== false;
 
-  const main = FIXED_LIFTS.map((key) => ({
-    key, label: LIFT_LABEL[key], color: LIFT_CHART_COLOR[key], category: 'main'
-  }));
-
-  const accessory = Object.keys(state.trackedLifts || {}).map((id) => {
-    const t = state.trackedLifts[id];
-    return { key: id, label: t.label, color: t.color, category: 'accessory' };
-  });
+  let main, accessory;
+  if (trackSbd) {
+    main = FIXED_LIFTS.map((key) => ({
+      key, label: LIFT_LABEL[key], color: LIFT_CHART_COLOR[key], category: 'main'
+    }));
+    accessory = Object.keys(state.trackedLifts || {}).map((id) => {
+      const t = state.trackedLifts[id];
+      return { key: id, label: t.label, color: t.color, category: 'accessory' };
+    });
+  } else {
+    const entries = Object.entries(state.trackedLifts || {});
+    main = entries.filter(([, t]) => t.isMain).map(([id, t]) => ({ key: id, label: t.label, color: t.color, category: 'main' }));
+    accessory = entries.filter(([, t]) => !t.isMain).map(([id, t]) => ({ key: id, label: t.label, color: t.color, category: 'accessory' }));
+  }
 
   let candidates;
   if (mode === 'main') candidates = main;
@@ -681,9 +718,12 @@ function renderProgress() {
   `;
 
   if (!hasAnyData) {
+    const emptyMsg = state.trackSbd !== false
+      ? 'No data yet. Enter your maxes in Setup or log a few sets to see your estimated 1RM progress here.'
+      : 'No data yet. Log a few sets to see your estimated 1RM progress here.';
     mainEl.innerHTML = `
       ${filterPills}
-      <div class="empty-state"><p>No data yet. Enter your maxes in Setup or log a few sets to see your estimated 1RM progress here.</p></div>
+      <div class="empty-state"><p>${emptyMsg}</p></div>
     `;
     return;
   }
@@ -799,6 +839,7 @@ function render() {
 function renderHome() {
   const trackSbd = state.trackSbd !== false;
   const hasMaxes = trackSbd && (state.maxes.squat.e1rm || state.maxes.bench.e1rm || state.maxes.deadlift.e1rm);
+  const mainTrackedIds = !trackSbd ? Object.keys(state.trackedLifts || {}).filter((id) => state.trackedLifts[id].isMain) : [];
 
   let html = '';
   if (trackSbd) {
@@ -827,6 +868,28 @@ function renderHome() {
         </div>
       `;
     }
+  } else if (mainTrackedIds.length > 0) {
+    html += `
+      <div class="setup-summary">
+        ${mainTrackedIds.map((id) => {
+          const t = state.trackedLifts[id];
+          const latest = latestProgressValue(computeLiftProgress(id));
+          return `
+            <div class="setup-stat">
+              <div class="label">${t.label}</div>
+              <div class="value">${latest != null ? latest : '—'}</div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+  } else {
+    html += `
+      <div class="card">
+        <p style="color:var(--text-muted);margin-bottom:12px;">Mark up to 3 tracked lifts as "Main" to see their progress here.</p>
+        <button class="btn btn-secondary btn-block" onclick="openManageTrackedLiftsModal()">Manage Tracked Lifts</button>
+      </div>
+    `;
   }
 
   html += `
@@ -2463,7 +2526,7 @@ function exerciseFormFieldsHtml(ex) {
       <label>Note (equipment, etc.)</label>
       <input type="text" id="edit-note" placeholder="e.g. trap bar, close grip" value="${ex.note || ''}" />
     </div>
-    <div class="form-group">
+    <div class="form-group ${state.trackSbd === false ? 'hidden' : ''}">
       <label>Lift for load calc (optional)</label>
       <select id="edit-lift">
         <option value="" ${!ex.lift ? 'selected' : ''}>None (accessory)</option>
