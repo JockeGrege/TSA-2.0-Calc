@@ -124,6 +124,7 @@ const state = {
   plateCalcWeight: '', // manual weight entry on the standalone Plate Calculator screen
   tableViewWeek: null, // null = all 9 weeks, 1-9 = a single week, in the Program Table view
   openProfileMenuId: null, // id of the profile row whose "more actions" menu is open, if any
+  hiddenProfilesExpanded: false, // session-only; never saved or synced
   progressHiddenLifts: {}, // key -> boolean, session-only per-lift chart visibility toggle in Progress view
   progressFilterMode: 'all', // 'all' | 'main' | 'accessory' - session-only, never saved or synced (changed too often to sync)
 
@@ -1310,12 +1311,9 @@ function renderAuth() {
   mainEl.innerHTML = html;
 }
 
-function renderProfiles() {
-  let html = `<p class="note" style="margin-bottom:12px;">Signed in as ${state.user.email}</p>`;
-  html += `<div class="week-list">`;
-  state.profiles.forEach((p) => {
-    const active = p.id === state.profileId;
-    html += `
+function renderProfileRow(p) {
+  const active = p.id === state.profileId;
+  return `
       <div class="week-item${active ? ' week-item-active' : ''}" onclick="switchProfile('${p.id}')">
         <div class="week-info week-info-flex">
           <h3>${p.name}</h3>
@@ -1337,14 +1335,38 @@ function renderProfiles() {
               <button onclick="event.stopPropagation();closeProfileMenu();openSaveBlueprintModal('${p.id}')">Save as Blueprint</button>
               <button onclick="event.stopPropagation();closeProfileMenu();resetProfileHandler('${p.id}')">Reset to Original Default</button>
               <button onclick="event.stopPropagation();closeProfileMenu();openResetToBlueprintModal('${p.id}')">Reset to Blueprint</button>
+              <button onclick="event.stopPropagation();closeProfileMenu();toggleProfileHiddenHandler('${p.id}', ${!p.hidden})">${p.hidden ? 'Unhide' : 'Hide'}</button>
               <button class="profile-menu-danger" onclick="event.stopPropagation();closeProfileMenu();deleteProfileHandler('${p.id}')">Delete</button>
             </div>
           ` : ''}
         </div>
       </div>
     `;
-  });
+}
+
+function renderProfiles() {
+  const visibleProfiles = state.profiles.filter((p) => !p.hidden);
+  const hiddenProfiles = state.profiles.filter((p) => p.hidden);
+
+  let html = `<p class="note" style="margin-bottom:12px;">Signed in as ${state.user.email}</p>`;
+  html += `<div class="week-list">`;
+  visibleProfiles.forEach((p) => { html += renderProfileRow(p); });
   html += `</div>`;
+
+  if (hiddenProfiles.length > 0) {
+    html += `
+      <div class="collapsible-section-wrap mt-2">
+        <div class="warmup-table-header" onclick="toggleHiddenProfilesExpanded()">
+          <span>Hidden Profiles (${hiddenProfiles.length})</span>
+          <svg class="chevron ${state.hiddenProfilesExpanded ? 'open' : ''}" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+        <div class="week-list ${state.hiddenProfilesExpanded ? '' : 'hidden'}" style="padding:0 12px 12px;">
+          ${hiddenProfiles.map(renderProfileRow).join('')}
+        </div>
+      </div>
+    `;
+  }
+
   html += `
     <button class="btn btn-primary btn-block mt-4" onclick="openNewProfileModal()">+ New Profile</button>
     <p class="note" style="margin:4px 0 12px;">Creates the original TSA program with Squat/Bench/Deadlift tracking.</p>
@@ -1366,6 +1388,21 @@ function toggleProfileMenu(profileId) {
 function closeProfileMenu() {
   state.openProfileMenuId = null;
   render();
+}
+
+function toggleHiddenProfilesExpanded() {
+  state.hiddenProfilesExpanded = !state.hiddenProfilesExpanded;
+  render();
+}
+
+async function toggleProfileHiddenHandler(profileId, hidden) {
+  try {
+    await window.Firebase.setProfileHidden(state.user.uid, profileId, hidden);
+    await refreshProfilesAndToast(hidden ? 'Profile hidden' : 'Profile unhidden');
+  } catch (e) {
+    console.error('Failed to update profile visibility', e);
+    showToast('Could not update profile. Please try again.');
+  }
 }
 
 function renderBarbellVisual(breakdown) {

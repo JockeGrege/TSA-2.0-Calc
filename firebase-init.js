@@ -39,6 +39,7 @@ const DEFAULT_PROFILE_DATA = {
   trackedLifts: {},
   trackSbd: true,
   weekTitles: {},
+  hidden: false,
   viewerEmails: [],
   plateSettings: {
     barbellKg: 20,
@@ -119,7 +120,7 @@ async function setCurrentProfileId(uid, profileId) {
 async function listProfiles(uid) {
   const snap = await getDocs(profilesCollectionRef(uid));
   const profiles = [];
-  snap.forEach((d) => profiles.push({ id: d.id, name: d.data().name || "Untitled" }));
+  snap.forEach((d) => profiles.push({ id: d.id, name: d.data().name || "Untitled", hidden: !!d.data().hidden }));
   return profiles;
 }
 
@@ -138,6 +139,10 @@ async function createProfile(uid, name, seedData) {
 
 async function renameProfile(uid, profileId, name) {
   await setDoc(profileDocRef(uid, profileId), { name, updatedAt: serverTimestamp() }, { merge: true });
+}
+
+async function setProfileHidden(uid, profileId, hidden) {
+  await setDoc(profileDocRef(uid, profileId), { hidden: !!hidden, updatedAt: serverTimestamp() }, { merge: true });
 }
 
 async function deleteProfile(uid, profileId) {
@@ -256,6 +261,7 @@ window.Firebase = {
   listProfiles,
   createProfile,
   renameProfile,
+  setProfileHidden,
   deleteProfile,
   loadProfileData,
   saveProfileData,
