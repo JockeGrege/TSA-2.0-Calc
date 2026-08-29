@@ -655,6 +655,12 @@ input.rpe-red {
   overflow: hidden;
 }
 
+.collapsible-section-wrap {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
 .warmup-table-header {
   display: flex;
   align-items: center;

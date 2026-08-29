@@ -1355,7 +1355,7 @@ function renderProfiles() {
 
   if (hiddenProfiles.length > 0) {
     html += `
-      <div class="warmup-table-wrap mt-2">
+      <div class="collapsible-section-wrap mt-2">
         <div class="warmup-table-header" onclick="toggleHiddenProfilesExpanded()">
           <span>Hidden Profiles (${hiddenProfiles.length})</span>
           <svg class="chevron ${state.hiddenProfilesExpanded ? 'open' : ''}" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
