@@ -131,6 +131,9 @@ const state = {
   // RPE Calculator (session-only scratch calculator; never saved or synced)
   rpeCalc: { weight: '', reps: '', rpe: '', targetReps: 1, roundIncrement: null }, // roundIncrement: null | 1.25 | 2.5
 
+  // Standalone Warmup Calculator (session-only scratch calculator; never saved or synced)
+  warmupCalc: { targetWeight: '', scheme: null }, // scheme: null | 'slow' | 'medium' | 'fast'
+
   // Auth / cloud sync
   user: null,
   authReady: false,
@@ -750,6 +753,10 @@ function goRpeCalc() {
   navigateTo('rpe-calc');
 }
 
+function goWarmupCalc() {
+  navigateTo('warmup-calc');
+}
+
 // ========== RENDER ==========
 const appEl = document.getElementById('app');
 const mainEl = document.getElementById('main');
@@ -819,6 +826,9 @@ function render() {
   } else if (state.view === 'rpe-calc') {
     headerTitle.textContent = 'RPE Calculator';
     renderRpeCalc();
+  } else if (state.view === 'warmup-calc') {
+    headerTitle.textContent = 'Warmup Calculator';
+    renderWarmupCalcScreen();
   } else if (state.view === 'home') {
     headerTitle.textContent = 'TSA 9-Week';
     renderHome();
@@ -1600,6 +1610,64 @@ function openRpeInfoModal() {
     </p>
   `;
   openModalOverlay();
+}
+
+// ========== STANDALONE WARMUP CALCULATOR ==========
+// Reachable from every screen via the header icon. Reuses the same Slow/Medium/Fast
+// schemes and table rendering as the per-exercise warmup blocks in the Day view, just
+// driven by a manually-entered target weight instead of a lift's calculated load.
+function renderWarmupCalcScreen() {
+  const wc = state.warmupCalc;
+  let html = `
+    <div class="form-group">
+      <label>Target Weight (${getPlateUnit()})</label>
+      <input type="text" inputmode="decimal" placeholder="0" value="${wc.targetWeight}"
+        oninput="updateWarmupCalcWeight(this.value)" />
+    </div>
+    <div class="warmup-buttons mt-2">
+      ${Object.keys(WARMUP_SCHEMES).map((s) => `
+        <button class="btn-warmup ${wc.scheme === s ? 'active' : ''}" onclick="setWarmupCalcScheme('${s}')">${WARMUP_SCHEMES[s].label}</button>
+      `).join('')}
+    </div>
+    <div id="warmup-calc-results">${renderWarmupCalcResults()}</div>
+  `;
+  mainEl.innerHTML = html;
+}
+
+function renderWarmupCalcResults() {
+  const wc = state.warmupCalc;
+  const targetWeight = parseFloat(wc.targetWeight);
+
+  if (!wc.scheme) {
+    return `<p class="note mt-2">Pick a warmup scheme to get started</p>`;
+  }
+  if (isNaN(targetWeight) || targetWeight <= 0) {
+    return `<p class="note mt-2">Enter a target weight above</p>`;
+  }
+
+  return `
+    <div class="warmup-table-wrap mt-2">
+      <table class="warmup-table">
+        <thead><tr><th>Stage</th><th>Weight</th><th>Reps</th><th>Rest</th></tr></thead>
+        <tbody>${renderWarmupTableRows(wc.scheme, targetWeight, 'calc', 0, 0)}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function updateWarmupCalcWeight(value) {
+  state.warmupCalc.targetWeight = sanitizeNonNegativeDecimal(value);
+  refreshWarmupCalcResults();
+}
+
+function setWarmupCalcScheme(scheme) {
+  state.warmupCalc.scheme = scheme;
+  render();
+}
+
+function refreshWarmupCalcResults() {
+  const el = document.getElementById('warmup-calc-results');
+  if (el) el.innerHTML = renderWarmupCalcResults();
 }
 
 // ========== BROWSER HISTORY / BACK BUTTON ==========
@@ -2967,6 +3035,7 @@ document.getElementById('btn-home').addEventListener('click', goHome);
 document.getElementById('btn-setup').addEventListener('click', goSetup);
 document.getElementById('btn-profile').addEventListener('click', goProfiles);
 document.getElementById('btn-plates').addEventListener('click', goPlates);
+document.getElementById('btn-warmup').addEventListener('click', goWarmupCalc);
 document.getElementById('btn-progress').addEventListener('click', goProgress);
 document.getElementById('btn-rpe').addEventListener('click', goRpeCalc);
 document.getElementById('btn-exit-shared').addEventListener('click', exitSharedView);
